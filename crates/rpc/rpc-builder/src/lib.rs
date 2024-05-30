@@ -1428,7 +1428,11 @@ where
 /// Once the [RpcModule] is built via [RpcModuleBuilder] the servers can be started, See also
 /// [ServerBuilder::build] and [Server::start](jsonrpsee::server::Server::start).
 #[derive(Default, Debug)]
-pub struct RpcServerConfig {
+pub struct RpcServerConfig<Http =Identity, Rpc=Identity> {
+    /// For all ServerBuilders that were installed
+    http: Http,
+    /// Similarly, for all ServerBuilders that were installed
+    rpc: Rpc,
     /// Configs for JSON-RPC Http.
     http_server_config: Option<ServerBuilder<Identity, Identity>>,
     /// Allowed CORS Domains for http
