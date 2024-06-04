@@ -1499,21 +1499,21 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Default, Debug)]
-pub struct RpcServerConfig {
+pub struct RpcServerConfig<HTTP = Identity, RPC = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<HTTP, Identity>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<HTTP, Identity>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
     ws_addr: Option<SocketAddr>,
     /// Configs for JSON-RPC IPC server
-    ipc_server_config: Option<IpcServerBuilder<Identity, Identity>>,
+    ipc_server_config: Option<IpcServerBuilder<RPC, Identity>>,
     /// The Endpoint where to launch the ipc server
     ipc_endpoint: Option<String>,
     /// JWT secret for authentication
@@ -1522,7 +1522,11 @@ pub struct RpcServerConfig {
 
 // === impl RpcServerConfig ===
 
-impl RpcServerConfig {
+impl<HTTP, RPC> RpcServerConfig<HTTP, RPC> 
+where
+    HTTP: Default,
+    RPC: Default,
+{
     /// Creates a new config with only http set
     pub fn http(config: ServerBuilder<Identity, Identity>) -> Self {
         Self::default().with_http(config)
