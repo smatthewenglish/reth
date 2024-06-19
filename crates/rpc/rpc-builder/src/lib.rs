@@ -1850,17 +1850,31 @@ impl<RpcMiddleware> RpcServer<RpcMiddleware> {
         {
             handle.ipc_endpoint = Some(server.endpoint());
             //handle.ipc = Some(server.start(module).await?);
-            handle.ipc = Some(server.start(Self::wrap_middleware(module)).await?);
+            handle.ipc = Some(server.start(Self::apply_middleware(module)).await?);
         }
 
         Ok(handle)
     }
 
-    pub fn wrap_middleware<M>(middleware: M) -> impl tower::Layer<reth_ipc::server::TowerServiceNoHttp<Stack<RpcRequestMetrics, Identity>>> + Send
+    pub async fn apply_middleware<M>(
+        server: IpcServer<HttpMiddleware, RpcMiddleware>,
+        module: M,
+    ) -> Result<IpcServer<HttpMiddleware, RpcMiddleware>, RpcError>
     where
-        M: tower::Layer<reth_ipc::server::TowerServiceNoHttp<Stack<RpcRequestMetrics, Identity>>> + Send + 'static,
+        M: Layer<TowerServiceNoHttp<Stack<RpcRequestMetrics, Identity>>> + Send + 'static,
+        M::Service: Service<String, Response = Option<String>, Error = Box<dyn StdError + Send + Sync + 'static>> + Send + Unpin,
     {
-        middleware
+        let rpc_service_builder = RpcServiceBuilder::new().layer(module);
+    
+        let updated_server = IpcServer {
+            endpoint: server.endpoint,
+            id_provider: server.id_provider,
+            cfg: server.cfg,
+            rpc_middleware: rpc_service_builder,
+            http_middleware: server.http_middleware,
+        };
+    
+        Ok(updated_server)
     }
 
 }
