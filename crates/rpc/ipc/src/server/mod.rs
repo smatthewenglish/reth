@@ -566,7 +566,7 @@ impl Default for Settings {
 
 /// Builder to configure and create a JSON-RPC server
 #[derive(Debug)]
-pub struct Builder<HttpMiddleware, RpcMiddleware> {
+pub struct Builder<HttpMiddleware = Identity, RpcMiddleware = Identity> {
     settings: Settings,
     /// Subscription ID provider.
     id_provider: Arc<dyn IdProvider>,

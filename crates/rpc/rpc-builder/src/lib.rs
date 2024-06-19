@@ -1168,21 +1168,21 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Default, Debug)]
-pub struct RpcServerConfig {
+pub struct RpcServerConfig<HttpMiddleware = Identity, RpcMiddleware = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<HttpMiddleware, Identity>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<HttpMiddleware, Identity>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
     ws_addr: Option<SocketAddr>,
     /// Configs for JSON-RPC IPC server
-    ipc_server_config: Option<IpcServerBuilder<Identity, Identity>>,
+    ipc_server_config: Option<IpcServerBuilder<RpcMiddleware, Identity>>,
     /// The Endpoint where to launch the ipc server
     ipc_endpoint: Option<String>,
     /// JWT secret for authentication
@@ -1191,19 +1191,19 @@ pub struct RpcServerConfig {
 
 // === impl RpcServerConfig ===
 
-impl RpcServerConfig {
+impl<HttpMiddleware: Default, RpcMiddleware: Default> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
     /// Creates a new config with only http set
-    pub fn http(config: ServerBuilder<Identity, Identity>) -> Self {
+    pub fn http(config: ServerBuilder<HttpMiddleware, Identity>) -> Self {
         Self::default().with_http(config)
     }
 
     /// Creates a new config with only ws set
-    pub fn ws(config: ServerBuilder<Identity, Identity>) -> Self {
+    pub fn ws(config: ServerBuilder<HttpMiddleware, Identity>) -> Self {
         Self::default().with_ws(config)
     }
 
     /// Creates a new config with only ipc set
-    pub fn ipc(config: IpcServerBuilder<Identity, Identity>) -> Self {
+    pub fn ipc(config: IpcServerBuilder<RpcMiddleware, Identity>) -> Self {
         Self::default().with_ipc(config)
     }
 
@@ -1211,7 +1211,7 @@ impl RpcServerConfig {
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+    pub fn with_http(mut self, config: ServerBuilder<HttpMiddleware, Identity>) -> Self {
         self.http_server_config =
             Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
         self
@@ -1238,7 +1238,7 @@ impl RpcServerConfig {
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+    pub fn with_ws(mut self, config: ServerBuilder<HttpMiddleware, Identity>) -> Self {
         self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
         self
     }
@@ -1265,7 +1265,7 @@ impl RpcServerConfig {
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
+    pub fn with_ipc(mut self, config: IpcServerBuilder<RpcMiddleware, Identity>) -> Self {
         self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
         self
     }
@@ -1481,7 +1481,7 @@ impl RpcServerConfig {
     ///
     /// Note: The server is not started and does nothing unless polled, See also
     /// [`RpcServer::start`]
-    pub async fn build(mut self, modules: &TransportRpcModules) -> Result<RpcServer, RpcError> {
+    pub async fn build(mut self, modules: &TransportRpcModules) -> Result<RpcServer<RpcMiddleware>, RpcError> {
         let mut server = RpcServer::empty();
         server.ws_http = self.build_ws_http(modules).await?;
 
@@ -1789,16 +1789,16 @@ impl Default for WsHttpServers {
 }
 
 /// Container type for each transport ie. http, ws, and ipc server
-pub struct RpcServer {
+pub struct RpcServer<RpcMiddleware> {
     /// Configured ws,http servers
     ws_http: WsHttpServer,
     /// ipc server
-    ipc: Option<IpcServer<Identity, Stack<RpcRequestMetrics, Identity>>>,
+    ipc: Option<IpcServer<RpcMiddleware, Stack<RpcRequestMetrics, Identity>>>,
 }
 
 // === impl RpcServer ===
 
-impl RpcServer {
+impl<RpcMiddleware> RpcServer<RpcMiddleware> {
     fn empty() -> Self {
         Self { ws_http: Default::default(), ipc: None }
     }
@@ -1849,14 +1849,23 @@ impl RpcServer {
             ipc_server.and_then(|server| ipc.map(|module| (server, module)))
         {
             handle.ipc_endpoint = Some(server.endpoint());
-            handle.ipc = Some(server.start(module).await?);
+            //handle.ipc = Some(server.start(module).await?);
+            handle.ipc = Some(server.start(Self::wrap_middleware(module)).await?);
         }
 
         Ok(handle)
     }
+
+    pub fn wrap_middleware<M>(middleware: M) -> impl tower::Layer<reth_ipc::server::TowerServiceNoHttp<Stack<RpcRequestMetrics, Identity>>> + Send
+    where
+        M: tower::Layer<reth_ipc::server::TowerServiceNoHttp<Stack<RpcRequestMetrics, Identity>>> + Send + 'static,
+    {
+        middleware
+    }
+
 }
 
-impl fmt::Debug for RpcServer {
+impl<RpcMiddleware> fmt::Debug for RpcServer<RpcMiddleware> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RpcServer")
             .field("http", &self.ws_http.http_local_addr.is_some())
