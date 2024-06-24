@@ -1556,7 +1556,7 @@ impl<L> RpcServerConfig<L> {
                 .set_rpc_middleware(
                     RpcServiceBuilder::new().layer(
                         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
-                    ),
+                    ).option_layer(self.additional_middleware),
                 )
                 .build(http_socket_addr)
                 .await
@@ -1839,12 +1839,45 @@ type WsHttpServerKind = Server<
     Stack<RpcRequestMetrics, Identity>,
 >;
 
+// type WsHttpServerKindX = 
+// std::option::Option<Server<Stack<tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>, Stack<tower::util::Either<CorsLayer, Identity>, Identity>>, Stack<tower::util::Either<tower::ServiceBuilder<L>, Identity>, Stack<RpcRequestMetrics, Identity>>>>;
+
+type WsHttpServerKindX = std::option::Option<Server<
+    tower::layer::util::Stack<
+        tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
+        tower::layer::util::Stack<
+            tower::util::Either<tower_http::cors::CorsLayer, Identity>,
+            Identity
+        >
+    >,
+    tower::layer::util::Stack<
+        tower::util::Either<
+            tower::ServiceBuilder<
+                tower::layer::util::Stack<
+                    tower::util::Either<tower_http::auth::AddAuthorizationLayer, Identity>,
+                    tower::layer::util::Stack<
+                        tower::util::Either<
+                            tower_http::trace::TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>>,
+                            Identity
+                        >,
+                        Identity
+                    >
+                >
+            >,
+            Identity
+        >,
+        tower::layer::util::Stack<RpcRequestMetrics, Identity>
+    >
+>>;
+
+
+
 /// Enum for holding the http and ws servers in all possible combinations.
 enum WsHttpServers {
     /// Both servers are on the same port
     SamePort(WsHttpServerKind),
     /// Servers are on different ports
-    DifferentPort { http: Option<WsHttpServerKind>, ws: Option<WsHttpServerKind> },
+    DifferentPort { http: Option<WsHttpServerKindX>, ws: Option<WsHttpServerKind> },
 }
 
 // === impl WsHttpServers ===
