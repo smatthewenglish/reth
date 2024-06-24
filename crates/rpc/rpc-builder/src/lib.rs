@@ -1168,7 +1168,6 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct RpcServerConfig<L = Identity> {
     /// Configs for JSON-RPC Http.
     http_server_config: Option<ServerBuilder<Identity, Identity>>,
@@ -1296,19 +1295,16 @@ impl<L> RpcServerConfig<L> {
 
     /// Creates a new config with only http set
     pub fn http(config: ServerBuilder<Identity, Identity>) -> Self {
-        //Self::default().with_http(config)
         Self { http_server_config: Some(config), ..Self::new() }
     }
 
     /// Creates a new config with only ws set
     pub fn ws(config: ServerBuilder<Identity, Identity>) -> Self {
-        //Self::default().with_ws(config)
         Self { ws_server_config: Some(config), ..Self::new() }
     }
 
     /// Creates a new config with only ipc set
     pub fn ipc(config: IpcServerBuilder<Identity, Identity>) -> Self {
-        //Self::default().with_ipc(config)
         Self { ipc_server_config: Some(config), ..Self::new() }
     }
 
