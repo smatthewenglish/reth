@@ -1292,6 +1292,9 @@ impl RpcServerConfig {
         &mut self,
         modules: &TransportRpcModules,
     ) -> Result<WsHttpServer, RpcError> {
+
+        let rpc_middleware: RpcServiceBuilder<Stack<jsonrpsee::server::middleware::rpc::RpcLoggerLayer, Identity>> = RpcServiceBuilder::new().rpc_logger(1024);
+
         let http_socket_addr = self.http_addr.unwrap_or(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::LOCALHOST,
             constants::DEFAULT_HTTP_RPC_PORT,
@@ -1334,19 +1337,22 @@ impl RpcServerConfig {
                         .option_layer(Self::maybe_cors_layer(cors)?)
                         .option_layer(self.maybe_jwt_layer()),
                 )
-                .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
-                        modules
-                            .http
-                            .as_ref()
-                            .or(modules.ws.as_ref())
-                            .map(RpcRequestMetrics::same_port)
-                            .unwrap_or_default(),
-                    ),
-                )
+                // .set_rpc_middleware(
+                //     RpcServiceBuilder::new()
+                //     .layer(
+                //         modules
+                //             .http
+                //             .as_ref()
+                //             .or(modules.ws.as_ref())
+                //             .map(RpcRequestMetrics::same_port)
+                //             .unwrap_or_default(),
+                //     ),
+                // )
+                .set_rpc_middleware(rpc_middleware.clone())
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
+
             let addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
@@ -1371,13 +1377,16 @@ impl RpcServerConfig {
                         .option_layer(Self::maybe_cors_layer(self.ws_cors_domains.clone())?)
                         .option_layer(self.maybe_jwt_layer()),
                 )
-                .set_rpc_middleware(
-                    RpcServiceBuilder::new()
-                        .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default()),
-                )
+                // .set_rpc_middleware(
+                //     RpcServiceBuilder::new()
+                //         .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default())
+                //         //.layer(rpc_middleware.clone()),
+                // )
+                .set_rpc_middleware(rpc_middleware.clone())
                 .build(ws_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::WS(ws_socket_addr)))?;
+
             let addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WS(ws_socket_addr)))?;
@@ -1394,14 +1403,16 @@ impl RpcServerConfig {
                         .option_layer(Self::maybe_cors_layer(self.http_cors_domains.clone())?)
                         .option_layer(self.maybe_jwt_layer()),
                 )
-                .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
-                        modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
-                    ),
-                )
+                // .set_rpc_middleware(
+                //     RpcServiceBuilder::new().layer(
+                //         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
+                //     )
+                // )
+                .set_rpc_middleware(rpc_middleware.clone())
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
+
             let local_addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
@@ -1671,7 +1682,8 @@ type WsHttpServerKind = Server<
         tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
         Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
     >,
-    Stack<RpcRequestMetrics, Identity>,
+    Stack<jsonrpsee::server::middleware::rpc::RpcLoggerLayer, Identity>,
+    //Stack<RpcServiceBuilder<Stack<jsonrpsee::server::middleware::rpc::RpcLoggerLayer, Identity>>, Stack<RpcRequestMetrics, Identity>>,
 >;
 
 /// Enum for holding the http and ws servers in all possible combinations.

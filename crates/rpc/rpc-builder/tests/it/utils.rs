@@ -18,6 +18,9 @@ use reth_transaction_pool::test_utils::{TestPool, TestPoolBuilder};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::sync::mpsc::unbounded_channel;
 
+//use jsonrpsee::server::{middleware::rpc::RpcLoggerLayer, RpcServiceBuilder};
+//use tower::layer::util::Stack;
+
 /// Localhost with port 0 so a free port is used.
 pub const fn test_address() -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
@@ -52,6 +55,10 @@ pub async fn launch_auth(secret: JwtSecret) -> AuthServerHandle {
 pub async fn launch_http(modules: impl Into<RpcModuleSelection>) -> RpcServerHandle {
     let builder = test_rpc_builder();
     let server = builder.build(TransportRpcModuleConfig::set_http(modules));
+
+    //let middleware: RpcServiceBuilder<Stack<RpcLoggerLayer, Identity>> =
+    // RpcServiceBuilder::new().rpc_logger(1024);
+
     server
         .start_server(RpcServerConfig::http(Default::default()).with_http_address(test_address()))
         .await
