@@ -1328,6 +1328,8 @@ impl RpcServerConfig {
 
             modules.config.ensure_ws_http_identical()?;
 
+            let rpc_middleware: RpcServiceBuilder<Stack<jsonrpsee::server::middleware::rpc::RpcLoggerLayer, Identity>> = RpcServiceBuilder::new().rpc_logger(1024);
+
             let builder = self.http_server_config.take().expect("http_server_config is Some");
             let server = builder
                 .set_http_middleware(
@@ -1336,14 +1338,15 @@ impl RpcServerConfig {
                         .option_layer(self.maybe_jwt_layer()),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
-                        modules
-                            .http
-                            .as_ref()
-                            .or(modules.ws.as_ref())
-                            .map(RpcRequestMetrics::same_port)
-                            .unwrap_or_default(),
-                    ),
+                    //RpcServiceBuilder::new().layer(
+                        //modules
+                            //.http
+                            //.as_ref()
+                            //.or(modules.ws.as_ref())
+                            //.map(RpcRequestMetrics::same_port)
+                            //.unwrap_or_default(),
+                    //),
+                    rpc_middleware
                 )
                 .build(http_socket_addr)
                 .await
@@ -1667,7 +1670,7 @@ struct WsHttpServer {
 }
 
 // Define the type alias with detailed type complexity
-type WsHttpServerKind = Server<
+type WsHttpServerKind00 = Server<
     Stack<
         tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
         Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
@@ -1675,12 +1678,29 @@ type WsHttpServerKind = Server<
     Stack<RpcRequestMetrics, Identity>,
 >;
 
+type WsHttpServerKind01 = Server<
+    Stack<
+        tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
+        Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
+    >,
+    Stack<jsonrpsee::server::middleware::rpc::RpcLoggerLayer, Identity>
+>;
+
+type WsHttpServerKind02 = Server<
+    Stack<
+        tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
+        Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
+    >,
+    Stack<dyn jsonrpsee::server::middleware::rpc::RpcServiceT, Identity>
+>;
+
+
 /// Enum for holding the http and ws servers in all possible combinations.
 enum WsHttpServers {
     /// Both servers are on the same port
-    SamePort(WsHttpServerKind),
+    SamePort(WsHttpServerKind01),
     /// Servers are on different ports
-    DifferentPort { http: Option<WsHttpServerKind>, ws: Option<WsHttpServerKind> },
+    DifferentPort { http: Option<WsHttpServerKind00>, ws: Option<WsHttpServerKind00> },
 }
 
 // === impl WsHttpServers ===
