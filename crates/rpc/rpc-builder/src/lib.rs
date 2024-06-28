@@ -1356,14 +1356,13 @@ impl RpcServerConfig {
                 http_handle = Some(handle.clone());
                 ws_handle = Some(handle);
             }
-            //return Ok((http_handle, ws_handle))
             return Ok(RpcServerHandle {
                 http_local_addr: Some(addr),
                 ws_local_addr: Some(addr),
                 http: http_handle,
                 ws: ws_handle,
-                ipc_endpoint: None, //Option<String>,
-                ipc: None,          //Option<jsonrpsee::server::ServerHandle>,
+                ipc_endpoint: None,
+                ipc: None,     
                 jwt_secret: self.jwt_secret,
             })
         }
@@ -1423,15 +1422,13 @@ impl RpcServerConfig {
             Some(http_server.expect("REASON").start(modules.http.clone().expect("REASON")));
         ws_handle = Some(ws_server.expect("REASON").start(modules.ws.clone().expect("REASON")));
 
-        //Ok((http_handle, ws_handle))
-
         Ok(RpcServerHandle {
             http_local_addr,
             ws_local_addr,
             http: http_handle,
             ws: ws_handle,
-            ipc_endpoint: None, //Option<String>,
-            ipc: None,          //Option<jsonrpsee::server::ServerHandle>,
+            ipc_endpoint: None,
+            ipc: None,     
             jwt_secret: self.jwt_secret,
         })
     }
