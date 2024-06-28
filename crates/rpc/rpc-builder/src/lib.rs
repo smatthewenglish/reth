@@ -254,29 +254,12 @@ where
 {
     let module_config = module_config.into();
     let mut server_config = server_config.into();
-    // RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
-    //     .build(module_config)
-    //     .start_server(server_config)
-    //     .await
 
     let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
         .build(module_config);
 
-    let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) =
-        server_config.build_ws_http(&value).await?;
-
-    // Destructure the tuple to get the first and second values
-    let (http, ws) = output;
-
-    Ok(RpcServerHandle {
-        http_local_addr: None,
-        ws_local_addr: None,
-        http,
-        ws,
-        ipc_endpoint: None,
-        ipc: None,
-        jwt_secret: None,
-    })
+    let output: RpcServerHandle = server_config.build_ws_http(&value).await?;
+    Ok(output)
 }
 
 /// A builder type to configure the RPC module: See [`RpcModule`]
@@ -1305,7 +1288,7 @@ impl RpcServerConfig {
     pub async fn build_ws_http(
         &mut self,
         modules: &TransportRpcModules,
-    ) -> Result<(RpcServerHandle), RpcError> {
+    ) -> Result<RpcServerHandle, RpcError> {
         let mut http_handle = None;
         let mut ws_handle = None;
 
@@ -1364,7 +1347,7 @@ impl RpcServerConfig {
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
-            let _addr = server
+            let addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
 
@@ -1373,13 +1356,22 @@ impl RpcServerConfig {
                 http_handle = Some(handle.clone());
                 ws_handle = Some(handle);
             }
-            return Ok((http_handle, ws_handle))
+            //return Ok((http_handle, ws_handle))
+            return Ok(RpcServerHandle {
+                http_local_addr: Some(addr),
+                ws_local_addr: Some(addr),
+                http: http_handle,
+                ws: ws_handle,
+                ipc_endpoint: None, //Option<String>,
+                ipc: None,          //Option<jsonrpsee::server::ServerHandle>,
+                jwt_secret: self.jwt_secret,
+            })
         }
 
-        let mut _http_local_addr = None;
+        let mut http_local_addr = None;
         let mut http_server = None;
 
-        let mut _ws_local_addr = None;
+        let mut ws_local_addr = None;
         let mut ws_server = None;
         if let Some(builder) = self.ws_server_config.take() {
             let server = builder
@@ -1400,7 +1392,7 @@ impl RpcServerConfig {
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WS(ws_socket_addr)))?;
 
-            _ws_local_addr = Some(addr);
+            ws_local_addr = Some(addr);
             ws_server = Some(server);
         }
 
@@ -1423,7 +1415,7 @@ impl RpcServerConfig {
             let local_addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
-            _http_local_addr = Some(local_addr);
+            http_local_addr = Some(local_addr);
             http_server = Some(server);
         }
 
@@ -1431,7 +1423,17 @@ impl RpcServerConfig {
             Some(http_server.expect("REASON").start(modules.http.clone().expect("REASON")));
         ws_handle = Some(ws_server.expect("REASON").start(modules.ws.clone().expect("REASON")));
 
-        Ok((http_handle, ws_handle))
+        //Ok((http_handle, ws_handle))
+
+        Ok(RpcServerHandle {
+            http_local_addr,
+            ws_local_addr,
+            http: http_handle,
+            ws: ws_handle,
+            ipc_endpoint: None, //Option<String>,
+            ipc: None,          //Option<jsonrpsee::server::ServerHandle>,
+            jwt_secret: self.jwt_secret,
+        })
     }
 }
 

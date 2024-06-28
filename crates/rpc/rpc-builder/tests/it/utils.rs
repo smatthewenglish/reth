@@ -1,4 +1,3 @@
-use jsonrpsee::server::ServerHandle;
 use reth_beacon_consensus::BeaconConsensusEngineHandle;
 use reth_chainspec::MAINNET;
 use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -50,23 +49,25 @@ pub async fn launch_auth(secret: JwtSecret) -> AuthServerHandle {
 }
 
 /// Launches a new server with http only with the given modules
-pub async fn launch_http(modules: impl Into<RpcModuleSelection>) -> ServerHandle {
+pub async fn launch_http(modules: impl Into<RpcModuleSelection>) -> RpcServerHandle {
     let builder = test_rpc_builder();
     let server = builder.build(TransportRpcModuleConfig::set_http(modules));
 
-    let config = RpcServerConfig::http(Default::default()).with_http_address(test_address());
-
-    let output = config.build_ws_http(&server).await;
+    let mut config = RpcServerConfig::http(Default::default()).with_http_address(test_address());
+    config.build_ws_http(&server).await.unwrap()
 }
 
 /// Launches a new server with ws only with the given modules
 pub async fn launch_ws(modules: impl Into<RpcModuleSelection>) -> RpcServerHandle {
     let builder = test_rpc_builder();
     let server = builder.build(TransportRpcModuleConfig::set_ws(modules));
-    server
-        .start_server(RpcServerConfig::ws(Default::default()).with_ws_address(test_address()))
-        .await
-        .unwrap()
+    // server
+    //     .start_server(RpcServerConfig::ws(Default::default()).with_ws_address(test_address()))
+    //     .await
+    //     .unwrap()
+
+    let mut config = RpcServerConfig::ws(Default::default()).with_http_address(test_address());
+    config.build_ws_http(&server).await.unwrap()
 }
 
 /// Launches a new server with http and ws and with the given modules
@@ -75,15 +76,21 @@ pub async fn launch_http_ws(modules: impl Into<RpcModuleSelection>) -> RpcServer
     let modules = modules.into();
     let server =
         builder.build(TransportRpcModuleConfig::set_ws(modules.clone()).with_http(modules));
-    server
-        .start_server(
-            RpcServerConfig::ws(Default::default())
-                .with_ws_address(test_address())
-                .with_http(Default::default())
-                .with_http_address(test_address()),
-        )
-        .await
-        .unwrap()
+    // server
+    //     .start_server(
+    //         RpcServerConfig::ws(Default::default())
+    //             .with_ws_address(test_address())
+    //             .with_http(Default::default())
+    //             .with_http_address(test_address()),
+    //     )
+    //     .await
+    //     .unwrap()
+
+    let mut config = RpcServerConfig::ws(Default::default())
+        .with_ws_address(test_address())
+        .with_http(Default::default())
+        .with_http_address(test_address());
+    config.build_ws_http(&server).await.unwrap()
 }
 
 /// Launches a new server with http and ws and with the given modules on the same port.
@@ -93,15 +100,21 @@ pub async fn launch_http_ws_same_port(modules: impl Into<RpcModuleSelection>) ->
     let server =
         builder.build(TransportRpcModuleConfig::set_ws(modules.clone()).with_http(modules));
     let addr = test_address();
-    server
-        .start_server(
-            RpcServerConfig::ws(Default::default())
-                .with_ws_address(addr)
-                .with_http(Default::default())
-                .with_http_address(addr),
-        )
-        .await
-        .unwrap()
+    // server
+    //     .start_server(
+    //         RpcServerConfig::ws(Default::default())
+    //             .with_ws_address(addr)
+    //             .with_http(Default::default())
+    //             .with_http_address(addr),
+    //     )
+    //     .await
+    //     .unwrap()
+
+    let mut config = RpcServerConfig::ws(Default::default())
+        .with_ws_address(addr)
+        .with_http(Default::default())
+        .with_http_address(addr);
+    config.build_ws_http(&server).await.unwrap()
 }
 
 /// Returns an [`RpcModuleBuilder`] with testing components.
