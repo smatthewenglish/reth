@@ -254,11 +254,28 @@ where
     EvmConfig: ConfigureEvm,
 {
     let module_config = module_config.into();
-    let server_config = server_config.into();
-    RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
-        .build(module_config)
-        .start_server(server_config)
-        .await
+    let mut server_config = server_config.into();
+    // RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
+    //     .build(module_config)
+    //     .start_server(server_config)
+    //     .await
+
+    let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config).build(module_config);
+
+    let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) = server_config.build_ws_http(&value).await?;
+
+    // Destructure the tuple to get the first and second values
+    let (http, ws) = output;
+
+    Ok(RpcServerHandle {
+        http_local_addr: None,
+        ws_local_addr: None,
+        http,
+        ws,
+        ipc_endpoint: None,
+        ipc: None,
+        jwt_secret: None,
+    })
 }
 
 /// A builder type to configure the RPC module: See [`RpcModule`]
@@ -1271,11 +1288,6 @@ impl RpcServerConfig {
         self.ipc_endpoint.clone()
     }
 
-    /// Convenience function to do [`RpcServerConfig::build`] and [`RpcServer::start`] in one step
-    pub async fn start(self, modules: TransportRpcModules) -> Result<RpcServerHandle, RpcError> {
-        self.build(&modules).await?.start(modules).await
-    }
-
     /// Creates the [`CorsLayer`] if any
     fn maybe_cors_layer(cors: Option<String>) -> Result<Option<CorsLayer>, CorsDomainError> {
         cors.as_deref().map(cors::create_cors_layer).transpose()
@@ -1629,11 +1641,6 @@ impl TransportRpcModules {
         self.merge_ipc(other)?;
         Ok(())
     }
-
-    /// Convenience function for starting a server
-    pub async fn start_server(self, builder: RpcServerConfig) -> Result<RpcServerHandle, RpcError> {
-        builder.build_ws_http(&self).await
-    }
 }
 
 /// Container type for ipc server
@@ -1658,10 +1665,11 @@ impl RpcServer {
     ///
     /// This returns an [RpcServerHandle] that's connected to the server task(s) until the server is
     /// stopped or the [RpcServerHandle] is dropped.
-    #[instrument(name = "start", skip_all, fields(http = ?self.http_local_addr(), ws = ?self.ws_local_addr(), ipc = ?self.ipc_endpoint()), target = "rpc", level = "TRACE")]
+    #[instrument(name = "start", skip_all, fields(ipc = ?self.ipc_endpoint()), target = "rpc", level = "TRACE")]
     pub async fn start(self, modules: TransportRpcModules) -> Result<RpcServerHandle, RpcError> {
         trace!(target: "rpc", "staring RPC server");
         let Self { ipc: ipc_server } = self;
+        let TransportRpcModules { config, http, ws, ipc } = modules;
         let mut handle = RpcServerHandle {
             http_local_addr: None,
             ws_local_addr: None,
@@ -1673,7 +1681,7 @@ impl RpcServer {
         };
 
         if let Some((server, module)) =
-            ipc_server.and_then(|server| self.ipc.map(|module| (server, module)))
+            ipc_server.and_then(|server| ipc.map(|module| (server, module)))
         {
             handle.ipc_endpoint = Some(server.endpoint());
             handle.ipc = Some(server.start(module).await?);

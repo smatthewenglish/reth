@@ -286,6 +286,26 @@ where
     extend_rpc_modules.extend_rpc_modules(ctx)?;
 
     let server_config = config.rpc.rpc_server_config();
+
+
+    //let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config).build(module_config);
+    // let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) = server_config.build_ws_http(&value).await?;
+    // let (http, ws) = output;
+    // Ok(RpcServerHandle {
+    //     http_local_addr: None,
+    //     ws_local_addr: None,
+    //     http,
+    //     ws,
+    //     ipc_endpoint: None,
+    //     ipc: None,
+    //     jwt_secret: None,
+    // })
+
+    
+
+        let launch_rpc = server_config.build_ws_http(&modules.clone());
+
+
     let launch_rpc = modules.clone().start_server(server_config).map_ok(|handle| {
         if let Some(path) = handle.ipc_endpoint() {
             info!(target: "reth::cli", %path, "RPC IPC server started");
