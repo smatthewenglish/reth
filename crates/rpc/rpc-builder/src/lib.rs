@@ -166,7 +166,6 @@ use error::{ConflictingModules, RpcError, ServerKind};
 use http::{header::AUTHORIZATION, HeaderMap};
 use jsonrpsee::{
     core::RegisterMethodError,
-    //server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, Server, ServerHandle},
     server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, ServerHandle},
     Methods,
     RpcModule,
@@ -192,7 +191,6 @@ use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    //fmt,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -620,8 +618,6 @@ impl RpcModuleConfigBuilder {
         self.eth.get_or_insert_with(EthConfig::default)
     }
 }
-//From<std::option::Option<RpcModule<()>>>
-//std::option::Option<RpcModule<()>>: Into<Methods>
 
 /// A Helper type the holds instances of the configured modules.
 #[derive(Debug, Clone)]
@@ -1296,7 +1292,6 @@ impl RpcServerConfig {
     pub async fn build_ws_http(
         &mut self,
         modules: &TransportRpcModules,
-        //) -> Result<WsHttpServer, RpcError> {
     ) -> Result<(Option<ServerHandle>, Option<ServerHandle>), RpcError> {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1659,10 +1654,10 @@ impl RpcServer {
         self.ipc.as_ref().map(|ipc| ipc.endpoint())
     }
 
-    // / Starts the configured server by spawning the servers on the tokio runtime.
-    // /
-    // / This returns an [RpcServerHandle] that's connected to the server task(s) until the server
-    // is / stopped or the [RpcServerHandle] is dropped.
+    /// Starts the configured server by spawning the servers on the tokio runtime.
+    ///
+    /// This returns an [RpcServerHandle] that's connected to the server task(s) until the server is
+    /// stopped or the [RpcServerHandle] is dropped.
     #[instrument(name = "start", skip_all, fields(http = ?self.http_local_addr(), ws = ?self.ws_local_addr(), ipc = ?self.ipc_endpoint()), target = "rpc", level = "TRACE")]
     pub async fn start(self, modules: TransportRpcModules) -> Result<RpcServerHandle, RpcError> {
         trace!(target: "rpc", "staring RPC server");
@@ -1676,10 +1671,6 @@ impl RpcServer {
             ipc: None,
             jwt_secret: None,
         };
-
-        // let (http, ws) = ws_http.server.start(http, ws, &config).await?;
-        // handle.http = http;
-        // handle.ws = ws;
 
         if let Some((server, module)) =
             ipc_server.and_then(|server| self.ipc.map(|module| (server, module)))
