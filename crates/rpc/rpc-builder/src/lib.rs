@@ -1305,7 +1305,7 @@ impl RpcServerConfig {
     pub async fn build_ws_http(
         &mut self,
         modules: &TransportRpcModules,
-    ) -> Result<(Option<ServerHandle>, Option<ServerHandle>), RpcError> {
+    ) -> Result<(RpcServerHandle), RpcError> {
         let mut http_handle = None;
         let mut ws_handle = None;
 

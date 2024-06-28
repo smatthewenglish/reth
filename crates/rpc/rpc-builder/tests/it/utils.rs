@@ -1,3 +1,4 @@
+use jsonrpsee::server::ServerHandle;
 use reth_beacon_consensus::BeaconConsensusEngineHandle;
 use reth_chainspec::MAINNET;
 use reth_ethereum_engine_primitives::EthEngineTypes;
@@ -54,7 +55,8 @@ pub async fn launch_http(modules: impl Into<RpcModuleSelection>) -> ServerHandle
     let server = builder.build(TransportRpcModuleConfig::set_http(modules));
 
     let config = RpcServerConfig::http(Default::default()).with_http_address(test_address());
-    config.build_ws_http(&server).await.unwrap();
+
+    let output = config.build_ws_http(&server).await;
 }
 
 /// Launches a new server with ws only with the given modules
