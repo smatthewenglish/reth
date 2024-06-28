@@ -166,7 +166,8 @@ use error::{ConflictingModules, RpcError, ServerKind};
 use http::{header::AUTHORIZATION, HeaderMap};
 use jsonrpsee::{
     core::RegisterMethodError,
-    server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, Server, ServerHandle},
+    //server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, Server, ServerHandle},
+    server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, ServerHandle},
     Methods, RpcModule,
 };
 use reth_engine_primitives::EngineTypes;
@@ -618,6 +619,8 @@ impl RpcModuleConfigBuilder {
         self.eth.get_or_insert_with(EthConfig::default)
     }
 }
+//From<std::option::Option<RpcModule<()>>>
+//std::option::Option<RpcModule<()>>: Into<Methods>
 
 /// A Helper type the holds instances of the configured modules.
 #[derive(Debug, Clone)]
@@ -1292,7 +1295,12 @@ impl RpcServerConfig {
     async fn build_ws_http(
         &mut self,
         modules: &TransportRpcModules,
-    ) -> Result<WsHttpServer, RpcError> {
+    //) -> Result<WsHttpServer, RpcError> {
+    ) -> Result<(Option<ServerHandle>, Option<ServerHandle>), RpcError> {
+
+        let mut http_handle = None;
+        let mut ws_handle = None;
+
         let http_socket_addr = self.http_addr.unwrap_or(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::LOCALHOST,
             constants::DEFAULT_HTTP_RPC_PORT,
@@ -1351,12 +1359,18 @@ impl RpcServerConfig {
             let addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
-            return Ok(WsHttpServer {
-                http_local_addr: Some(addr),
-                ws_local_addr: Some(addr),
-                server: WsHttpServers::SamePort(server),
-                jwt_secret: self.jwt_secret,
-            })
+            // return Ok(WsHttpServer {
+            //     http_local_addr: Some(addr),
+            //     ws_local_addr: Some(addr),
+            //     server: WsHttpServers::SamePort(server),
+            //     jwt_secret: self.jwt_secret,
+            // })
+            if let Some(module) = modules.http.or(modules.ws) {
+                let handle = server.start(module);
+                http_handle = Some(handle.clone());
+                ws_handle = Some(handle);
+            }
+            return Ok((http_handle, ws_handle))
         }
 
         let mut http_local_addr = None;
@@ -1410,12 +1424,27 @@ impl RpcServerConfig {
             http_server = Some(server);
         }
 
-        Ok(WsHttpServer {
-            http_local_addr,
-            ws_local_addr,
-            server: WsHttpServers::DifferentPort { http: http_server, ws: ws_server },
-            jwt_secret: self.jwt_secret,
-        })
+        // if let Some((server, module)) =
+        //     http.and_then(|server| http_module.map(|module| (server, module)))
+        // {
+        //     http_handle = Some(server.start(module));
+        // }
+        // if let Some((server, module)) =
+        //     ws.and_then(|server| ws_module.map(|module| (server, module)))
+        // {
+        //     ws_handle = Some(server.start(module));
+        // }
+
+        // Ok(WsHttpServer {
+        //     http_local_addr,
+        //     ws_local_addr,
+        //     server: WsHttpServers::DifferentPort { http: http_server, ws: ws_server },
+        //     jwt_secret: self.jwt_secret,
+        // })
+        http_handle = Some(http_server.expect("REASON").start(modules.http));
+        ws_handle = Some(http_server.expect("REASON").start(modules.ws));
+
+        Ok((http_handle, ws_handle))
     }
 
     /// Finalize the configuration of the server(s).
@@ -1654,87 +1683,88 @@ impl TransportRpcModules {
 }
 
 /// Container type for ws and http servers in all possible combinations.
-#[derive(Default)]
-struct WsHttpServer {
-    /// The address of the http server
-    http_local_addr: Option<SocketAddr>,
-    /// The address of the ws server
-    ws_local_addr: Option<SocketAddr>,
-    /// Configured ws,http servers
-    server: WsHttpServers,
-    /// The jwt secret.
-    jwt_secret: Option<JwtSecret>,
-}
+// #[derive(Default)]
+// struct WsHttpServer {
+//     /// The address of the http server
+//     http_local_addr: Option<SocketAddr>,
+//     /// The address of the ws server
+//     ws_local_addr: Option<SocketAddr>,
+//     /// Configured ws,http servers
+//     server: WsHttpServers,
+//     /// The jwt secret.
+//     jwt_secret: Option<JwtSecret>,
+// }
 
 // Define the type alias with detailed type complexity
-type WsHttpServerKind = Server<
-    Stack<
-        tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
-        Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
-    >,
-    Stack<RpcRequestMetrics, Identity>,
->;
+// type WsHttpServerKind = Server<
+//     Stack<
+//         tower::util::Either<AuthLayer<JwtAuthValidator>, Identity>,
+//         Stack<tower::util::Either<CorsLayer, Identity>, Identity>,
+//     >,
+//     Stack<RpcRequestMetrics, Identity>,
+// >;
 
 /// Enum for holding the http and ws servers in all possible combinations.
-enum WsHttpServers {
-    /// Both servers are on the same port
-    SamePort(WsHttpServerKind),
-    /// Servers are on different ports
-    DifferentPort { http: Option<WsHttpServerKind>, ws: Option<WsHttpServerKind> },
-}
+// enum WsHttpServers {
+//     /// Both servers are on the same port
+//     SamePort(WsHttpServerKind),
+//     /// Servers are on different ports
+//     DifferentPort { http: Option<WsHttpServerKind>, ws: Option<WsHttpServerKind> },
+// }
 
 // === impl WsHttpServers ===
 
-impl WsHttpServers {
-    /// Starts the servers and returns the handles (http, ws)
-    async fn start(
-        self,
-        http_module: Option<RpcModule<()>>,
-        ws_module: Option<RpcModule<()>>,
-        config: &TransportRpcModuleConfig,
-    ) -> Result<(Option<ServerHandle>, Option<ServerHandle>), RpcError> {
-        let mut http_handle = None;
-        let mut ws_handle = None;
-        match self {
-            Self::SamePort(server) => {
-                // Make sure http and ws modules are identical, since we currently can't run
-                // different modules on same server
-                config.ensure_ws_http_identical()?;
+// impl WsHttpServers {
+//     /// Starts the servers and returns the handles (http, ws)
+//     async fn start(
+//         self,
+//         http_module: Option<RpcModule<()>>,
+//         ws_module: Option<RpcModule<()>>,
+//         config: &TransportRpcModuleConfig,
+//     ) -> Result<(Option<ServerHandle>, Option<ServerHandle>), RpcError> {
+//         let mut http_handle = None;
+//         let mut ws_handle = None;
+//         match self {
+//             Self::SamePort(server) => {
+//                 // Make sure http and ws modules are identical, since we currently can't run
+//                 // different modules on same server
+//                 config.ensure_ws_http_identical()?;
 
-                if let Some(module) = http_module.or(ws_module) {
-                    let handle = server.start(module);
-                    http_handle = Some(handle.clone());
-                    ws_handle = Some(handle);
-                }
-            }
-            Self::DifferentPort { http, ws } => {
-                if let Some((server, module)) =
-                    http.and_then(|server| http_module.map(|module| (server, module)))
-                {
-                    http_handle = Some(server.start(module));
-                }
-                if let Some((server, module)) =
-                    ws.and_then(|server| ws_module.map(|module| (server, module)))
-                {
-                    ws_handle = Some(server.start(module));
-                }
-            }
-        }
+//                 if let Some(module) = http_module.or(ws_module) {
+//                     let handle = server.start(module);
+//                     http_handle = Some(handle.clone());
+//                     ws_handle = Some(handle);
+//                 }
+//             }
+//             Self::DifferentPort { http, ws } => {
+//                 if let Some((server, module)) =
+//                     http.and_then(|server| http_module.map(|module| (server, module)))
+//                 {
+//                     http_handle = Some(server.start(module));
+//                 }
+//                 if let Some((server, module)) =
+//                     ws.and_then(|server| ws_module.map(|module| (server, module)))
+//                 {
+//                     ws_handle = Some(server.start(module));
+//                 }
+//             }
+//         }
 
-        Ok((http_handle, ws_handle))
-    }
-}
+//         Ok((http_handle, ws_handle))
+//     }
+// }
 
-impl Default for WsHttpServers {
-    fn default() -> Self {
-        Self::DifferentPort { http: None, ws: None }
-    }
-}
+// impl Default for WsHttpServers {
+//     fn default() -> Self {
+//         Self::DifferentPort { http: None, ws: None }
+//     }
+// }
 
 /// Container type for each transport ie. http, ws, and ipc server
 pub struct RpcServer {
-    /// Configured ws,http servers
-    ws_http: WsHttpServer,
+    /// Configured ws, http servers
+    //ws_http: WsHttpServer,
+    ws_http: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>),
     /// ipc server
     ipc: Option<IpcServer<Identity, Stack<RpcRequestMetrics, Identity>>>,
 }
