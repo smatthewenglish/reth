@@ -7534,6 +7534,7 @@ dependencies = [
  "eyre",
  "fdlimit",
  "futures",
+ "jsonrpsee",
  "rayon",
  "reth-auto-seal-consensus",
  "reth-beacon-consensus",

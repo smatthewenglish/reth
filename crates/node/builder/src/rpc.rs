@@ -1,6 +1,7 @@
 //! Builder support for rpc components.
 
 use futures::TryFutureExt;
+use jsonrpsee::server::ServerHandle;
 use reth_network::NetworkHandle;
 use reth_node_api::FullNodeComponents;
 use reth_node_core::{node_config::NodeConfig, rpc::api::EngineApiServer};
@@ -8,7 +9,7 @@ use reth_payload_builder::PayloadBuilderHandle;
 use reth_rpc_builder::{
     auth::{AuthRpcModule, AuthServerHandle},
     config::RethRpcServerConfig,
-    RethModuleRegistry, RpcModuleBuilder, RpcServerHandle, TransportRpcModules,
+    RethModuleRegistry, RpcModuleBuilder, TransportRpcModules,
 };
 use reth_rpc_layer::JwtSecret;
 use reth_tasks::TaskExecutor;
@@ -24,7 +25,8 @@ use std::{
 #[derive(Debug, Clone)]
 pub struct RethRpcServerHandles {
     /// The regular RPC server handle to all configured transports.
-    pub rpc: RpcServerHandle,
+    //pub rpc: RpcServerHandle,
+    pub rpc: ServerHandle,
     /// The handle to the auth server (engine API)
     pub auth: AuthServerHandle,
 }
@@ -285,39 +287,26 @@ where
 
     extend_rpc_modules.extend_rpc_modules(ctx)?;
 
-    let server_config = config.rpc.rpc_server_config();
+    let mut server_config = config.rpc.rpc_server_config();
 
+    // let output = server_config.build_ws_http(&modules.clone());
+    // let (launch_rpc, _) = output.await.expect("");
+    let cloned_modules = modules.clone();
+    let output = server_config.build_ws_http(&cloned_modules);
+    let (launch_rpc, _) = output.await.expect("");
 
-    //let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config).build(module_config);
-    // let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) = server_config.build_ws_http(&value).await?;
-    // let (http, ws) = output;
-    // Ok(RpcServerHandle {
-    //     http_local_addr: None,
-    //     ws_local_addr: None,
-    //     http,
-    //     ws,
-    //     ipc_endpoint: None,
-    //     ipc: None,
-    //     jwt_secret: None,
-    // })
-
-    
-
-        let launch_rpc = server_config.build_ws_http(&modules.clone());
-
-
-    let launch_rpc = modules.clone().start_server(server_config).map_ok(|handle| {
-        if let Some(path) = handle.ipc_endpoint() {
-            info!(target: "reth::cli", %path, "RPC IPC server started");
-        }
-        if let Some(addr) = handle.http_local_addr() {
-            info!(target: "reth::cli", url=%addr, "RPC HTTP server started");
-        }
-        if let Some(addr) = handle.ws_local_addr() {
-            info!(target: "reth::cli", url=%addr, "RPC WS server started");
-        }
-        handle
-    });
+    // let launch_rpc = modules.clone().start_server(server_config).map_ok(|handle| {
+    //     if let Some(path) = handle.ipc_endpoint() {
+    //         info!(target: "reth::cli", %path, "RPC IPC server started");
+    //     }
+    //     if let Some(addr) = handle.http_local_addr() {
+    //         info!(target: "reth::cli", url=%addr, "RPC HTTP server started");
+    //     }
+    //     if let Some(addr) = handle.ws_local_addr() {
+    //         info!(target: "reth::cli", url=%addr, "RPC WS server started");
+    //     }
+    //     handle
+    // });
 
     let launch_auth = auth_module.clone().start_server(auth_config).map_ok(|handle| {
         let addr = handle.local_addr();
@@ -330,8 +319,9 @@ where
     });
 
     // launch servers concurrently
-    let (rpc, auth) = futures::future::try_join(launch_rpc, launch_auth).await?;
-    let handles = RethRpcServerHandles { rpc, auth };
+    //let (rpc, auth) = futures::future::try_join(launch_rpc, launch_auth).await?;
+    let handles =
+        RethRpcServerHandles { rpc: launch_rpc.expect("REASON"), auth: launch_auth.await? };
 
     let ctx = RpcContext {
         node,

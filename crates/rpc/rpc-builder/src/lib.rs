@@ -167,8 +167,7 @@ use http::{header::AUTHORIZATION, HeaderMap};
 use jsonrpsee::{
     core::RegisterMethodError,
     server::{AlreadyStoppedError, IdProvider, RpcServiceBuilder, ServerHandle},
-    Methods,
-    RpcModule,
+    Methods, RpcModule,
 };
 use reth_engine_primitives::EngineTypes;
 use reth_evm::ConfigureEvm;
@@ -260,9 +259,11 @@ where
     //     .start_server(server_config)
     //     .await
 
-    let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config).build(module_config);
+    let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
+        .build(module_config);
 
-    let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) = server_config.build_ws_http(&value).await?;
+    let output: (std::option::Option<ServerHandle>, std::option::Option<ServerHandle>) =
+        server_config.build_ws_http(&value).await?;
 
     // Destructure the tuple to get the first and second values
     let (http, ws) = output;
@@ -1363,25 +1364,22 @@ impl RpcServerConfig {
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
-            let addr = server
+            let _addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WsHttp(http_socket_addr)))?;
 
-            if let Some(module) =
-                <std::option::Option<RpcModule<()>> as Clone>::clone(&modules.http)
-                    .or(modules.ws.clone())
-            {
-                let handle = server.start(module);
+            if let Some(module) = modules.http.as_ref().or(modules.ws.as_ref()) {
+                let handle = server.start(module.clone());
                 http_handle = Some(handle.clone());
                 ws_handle = Some(handle);
             }
             return Ok((http_handle, ws_handle))
         }
 
-        let mut http_local_addr = None;
+        let mut _http_local_addr = None;
         let mut http_server = None;
 
-        let mut ws_local_addr = None;
+        let mut _ws_local_addr = None;
         let mut ws_server = None;
         if let Some(builder) = self.ws_server_config.take() {
             let server = builder
@@ -1402,7 +1400,7 @@ impl RpcServerConfig {
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::WS(ws_socket_addr)))?;
 
-            ws_local_addr = Some(addr);
+            _ws_local_addr = Some(addr);
             ws_server = Some(server);
         }
 
@@ -1425,7 +1423,7 @@ impl RpcServerConfig {
             let local_addr = server
                 .local_addr()
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
-            http_local_addr = Some(local_addr);
+            _http_local_addr = Some(local_addr);
             http_server = Some(server);
         }
 
@@ -1644,6 +1642,7 @@ impl TransportRpcModules {
 }
 
 /// Container type for ipc server
+#[allow(missing_debug_implementations)]
 pub struct RpcServer {
     /// ipc server
     ipc: Option<IpcServer<Identity, Stack<RpcRequestMetrics, Identity>>>,
@@ -1652,10 +1651,6 @@ pub struct RpcServer {
 // === impl RpcServer ===
 
 impl RpcServer {
-    fn empty() -> Self {
-        Self { ipc: None }
-    }
-
     /// Returns the endpoint of the ipc server if started.
     pub fn ipc_endpoint(&self) -> Option<String> {
         self.ipc.as_ref().map(|ipc| ipc.endpoint())
@@ -1666,6 +1661,7 @@ impl RpcServer {
     /// This returns an [RpcServerHandle] that's connected to the server task(s) until the server is
     /// stopped or the [RpcServerHandle] is dropped.
     #[instrument(name = "start", skip_all, fields(ipc = ?self.ipc_endpoint()), target = "rpc", level = "TRACE")]
+    #[allow(dead_code, unused_variables)]
     pub async fn start(self, modules: TransportRpcModules) -> Result<RpcServerHandle, RpcError> {
         trace!(target: "rpc", "staring RPC server");
         let Self { ipc: ipc_server } = self;

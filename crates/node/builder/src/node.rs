@@ -1,4 +1,5 @@
 use crate::rpc::{RethRpcServerHandles, RpcRegistry};
+use jsonrpsee::server::ServerHandle;
 use reth_chainspec::ChainSpec;
 use reth_network::NetworkHandle;
 use reth_node_api::FullNodeComponents;
@@ -9,7 +10,7 @@ use reth_node_core::{
 };
 use reth_payload_builder::PayloadBuilderHandle;
 use reth_provider::ChainSpecProvider;
-use reth_rpc_builder::{auth::AuthServerHandle, RpcServerHandle};
+use reth_rpc_builder::auth::AuthServerHandle;
 use reth_tasks::TaskExecutor;
 use std::{marker::PhantomData, sync::Arc};
 
@@ -102,7 +103,7 @@ impl<Node: FullNodeComponents> FullNode<Node> {
     }
 
     /// Returns the [`RpcServerHandle`] to the started rpc server.
-    pub const fn rpc_server_handle(&self) -> &RpcServerHandle {
+    pub const fn rpc_server_handle(&self) -> &ServerHandle {
         &self.rpc_server_handles.rpc
     }
 
