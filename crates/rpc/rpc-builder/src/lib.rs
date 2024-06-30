@@ -66,10 +66,9 @@
 //!     )
 //!     .build(transports);
 //!
-//!     let mut handle =
-//!         RpcServerConfig::http(Default::default()).with_http_address(test_address());
+//!     let mut handle = RpcServerConfig::default().with_http(ServerBuilder::default());
 //!
-//!     handle.start_ws_http(&transport_modules).await.unwrap()
+//!     handle.start_ws_http(&transport_modules).await.unwrap();
 //! }
 //! ```
 //!
@@ -142,7 +141,7 @@
 //!     let config = RpcServerConfig::default();
 //!
 //!     let (_rpc_handle, _auth_handle) =
-//!         try_join!(config.start_ws_http(modules), auth_module.start_server(auth_config),)
+//!         try_join!(config.start_ws_http(&modules), auth_module.start_server(auth_config),)
 //!             .unwrap();
 //! }
 //! ```
