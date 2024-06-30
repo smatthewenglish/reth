@@ -1362,7 +1362,7 @@ impl RpcServerConfig {
                 http: http_handle,
                 ws: ws_handle,
                 ipc_endpoint: None,
-                ipc: None,     
+                ipc: None,
                 jwt_secret: self.jwt_secret,
             })
         }
@@ -1418,17 +1418,22 @@ impl RpcServerConfig {
             http_server = Some(server);
         }
 
-        http_handle = if let Some(http_server) = http_server {
-            Some(http_server.start(modules.http.clone().expect("http_handle 1")))
-        } else {
-            None
-        };
-        
-        ws_handle = if let Some(ws_server) = ws_server {
-            Some(ws_server.start(modules.ws.clone().expect("ws_handle 1")))
-        } else {
-            None
-        };
+        // http_handle = if let Some(http_server) = http_server {
+        //     Some(http_server.start(modules.http.clone().expect("http_handle 1")))
+        // } else {
+        //     None
+        // };
+
+        // ws_handle = if let Some(ws_server) = ws_server {
+        //     Some(ws_server.start(modules.ws.clone().expect("ws_handle 1")))
+        // } else {
+        //     None
+        // };
+        http_handle = http_server
+            .map(|http_server| http_server.start(modules.http.clone().expect("http_handle 1")));
+
+        ws_handle =
+            ws_server.map(|ws_server| ws_server.start(modules.ws.clone().expect("ws_handle 1")));
 
         Ok(RpcServerHandle {
             http_local_addr,
@@ -1436,7 +1441,7 @@ impl RpcServerConfig {
             http: http_handle,
             ws: ws_handle,
             ipc_endpoint: None,
-            ipc: None,     
+            ipc: None,
             jwt_secret: self.jwt_secret,
         })
     }
