@@ -1418,9 +1418,17 @@ impl RpcServerConfig {
             http_server = Some(server);
         }
 
-        http_handle =
-            Some(http_server.expect("REASON").start(modules.http.clone().expect("REASON")));
-        ws_handle = Some(ws_server.expect("REASON").start(modules.ws.clone().expect("REASON")));
+        http_handle = if let Some(http_server) = http_server {
+            Some(http_server.start(modules.http.clone().expect("http_handle 1")))
+        } else {
+            None
+        };
+        
+        ws_handle = if let Some(ws_server) = ws_server {
+            Some(ws_server.start(modules.ws.clone().expect("ws_handle 1")))
+        } else {
+            None
+        };
 
         Ok(RpcServerHandle {
             http_local_addr,
