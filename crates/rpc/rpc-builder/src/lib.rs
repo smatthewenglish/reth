@@ -65,9 +65,7 @@
 //!         evm_config,
 //!     )
 //!     .build(transports);
-//!
 //!     let mut handle = RpcServerConfig::default().with_http(ServerBuilder::default());
-//!
 //!     handle.start_ws_http(&transport_modules).await.unwrap();
 //! }
 //! ```
@@ -253,12 +251,10 @@ where
 {
     let module_config = module_config.into();
     let mut server_config = server_config.into();
-
-    let value = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
+    let modules = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
         .build(module_config);
-
-    let output: RpcServerHandle = server_config.start_ws_http(&value).await?;
-    Ok(output)
+    let handle: RpcServerHandle = server_config.start_ws_http(&modules).await?;
+    Ok(handle)
 }
 
 /// A builder type to configure the RPC module: See [`RpcModule`]
@@ -1414,24 +1410,10 @@ impl RpcServerConfig {
             http_local_addr = Some(local_addr);
             http_server = Some(server);
         }
-
-        // http_handle = if let Some(http_server) = http_server {
-        //     Some(http_server.start(modules.http.clone().expect("http_handle 1")))
-        // } else {
-        //     None
-        // };
-
-        // ws_handle = if let Some(ws_server) = ws_server {
-        //     Some(ws_server.start(modules.ws.clone().expect("ws_handle 1")))
-        // } else {
-        //     None
-        // };
         http_handle = http_server
-            .map(|http_server| http_server.start(modules.http.clone().expect("http_handle 1")));
-
-        ws_handle =
-            ws_server.map(|ws_server| ws_server.start(modules.ws.clone().expect("ws_handle 1")));
-
+            .map(|http_server| http_server.start(modules.http.clone().expect("http server error")));
+        ws_handle = ws_server
+            .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
         Ok(RpcServerHandle {
             http_local_addr,
             ws_local_addr,
