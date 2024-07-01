@@ -65,7 +65,7 @@
 //!     )
 //!     .build(transports);
 //!     let mut handle = RpcServerConfig::default().with_http(ServerBuilder::default());
-//!     handle.start_ws_http(&transport_modules).await.unwrap();
+//!     handle.start(&transport_modules).await.unwrap();
 //! }
 //! ```
 //!
@@ -138,8 +138,7 @@
 //!     let mut config = RpcServerConfig::default();
 //!
 //!     let (_rpc_handle, _auth_handle) =
-//!         try_join!(config.start_ws_http(&modules), auth_module.start_server(auth_config),)
-//!             .unwrap();
+//!         try_join!(config.start(&modules), auth_module.start_server(auth_config),).unwrap();
 //! }
 //! ```
 
