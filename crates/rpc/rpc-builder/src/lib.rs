@@ -246,12 +246,6 @@ where
     EvmConfig: ConfigureEvm,
 {
     let module_config = module_config.into();
-    // let mut server_config = server_config.into();
-    // let modules = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
-    //     .build(module_config);
-    // let handle: RpcServerHandle = server_config.start_ws_http(&modules).await?;
-    // Ok(handle)
-
     let handle: RpcServerHandle = server_config
         .into()
         .start(
@@ -1298,15 +1292,6 @@ impl RpcServerConfig {
             Ipv4Addr::LOCALHOST,
             constants::DEFAULT_WS_RPC_PORT,
         )));
-
-        // let metrics = modules.ipc.as_ref().map(RpcRequestMetrics::ipc).unwrap_or_default();
-        // let ipc_path =
-        //     self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
-        // let builder = self.ipc_server_config.take().expect("error - 0");
-        // let ipc =
-        //     builder.set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics)).
-        // build(ipc_path); let ipc_handle =
-        // Some(ipc.start(modules.ipc.clone().expect("error - 1")).await?);
 
         let metrics = modules.ipc.as_ref().map(RpcRequestMetrics::ipc).unwrap_or_default();
         let ipc_path =
