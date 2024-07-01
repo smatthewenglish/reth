@@ -8,9 +8,8 @@
 //! transaction pool. [`RpcModuleBuilder::build`] returns a [`TransportRpcModules`] which contains
 //! the transport specific config (what APIs are available via this transport).
 //!
-//! The [`RpcServerConfig`] is used to configure the [`RpcServer`] type which contains all transport
-//! implementations (http server, ws server, ipc server). [`RpcServer::start`] requires the
-//! [`TransportRpcModules`] so it can start the servers with the configured modules.
+//! The [`RpcServerConfig`] is used to assemble and start the http server, ws server, ipc servers,
+//! it requires the [`TransportRpcModules`] so it can start the servers with the configured modules.
 //!
 //! # Examples
 //!
@@ -518,8 +517,6 @@ where
 
     /// Configures all [`RpcModule`]s specific to the given [`TransportRpcModuleConfig`] which can
     /// be used to start the transport server(s).
-    ///
-    /// See also [`RpcServer::start`]
     pub fn build(self, module_config: TransportRpcModuleConfig) -> TransportRpcModules<()> {
         let mut modules = TransportRpcModules::default();
 
