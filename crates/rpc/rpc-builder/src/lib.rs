@@ -1304,14 +1304,18 @@ impl RpcServerConfig {
         //     self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
         // let builder = self.ipc_server_config.take().expect("error - 0");
         // let ipc =
-        //     builder.set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics)).build(ipc_path);
-        // let ipc_handle = Some(ipc.start(modules.ipc.clone().expect("error - 1")).await?);
-        
+        //     builder.set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics)).
+        // build(ipc_path); let ipc_handle =
+        // Some(ipc.start(modules.ipc.clone().expect("error - 1")).await?);
+
         let metrics = modules.ipc.as_ref().map(RpcRequestMetrics::ipc).unwrap_or_default();
-        let ipc_path = self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
-        
+        let ipc_path =
+            self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
+
         if let Some(builder) = self.ipc_server_config.take() {
-            let ipc = builder.set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics)).build(ipc_path);
+            let ipc = builder
+                .set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics))
+                .build(ipc_path);
             ipc_handle = Some(ipc.start(modules.ipc.clone().expect("error - 1")).await?);
         }
 
