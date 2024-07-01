@@ -168,7 +168,6 @@ use jsonrpsee::{
 };
 use reth_engine_primitives::EngineTypes;
 use reth_evm::ConfigureEvm;
-use reth_ipc::server::IpcServer;
 use reth_network_api::{noop::NoopNetwork, NetworkInfo, Peers};
 use reth_provider::{
     AccountReader, BlockReader, BlockReaderIdExt, CanonStateSubscriptions, ChainSpecProvider,
@@ -192,7 +191,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tower_http::cors::CorsLayer;
-use tracing::{instrument, trace};
 
 // re-export for convenience
 pub use jsonrpsee::server::ServerBuilder;
@@ -250,10 +248,19 @@ where
     EvmConfig: ConfigureEvm,
 {
     let module_config = module_config.into();
-    let mut server_config = server_config.into();
-    let modules = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
-        .build(module_config);
-    let handle: RpcServerHandle = server_config.start_ws_http(&modules).await?;
+    // let mut server_config = server_config.into();
+    // let modules = RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
+    //     .build(module_config);
+    // let handle: RpcServerHandle = server_config.start_ws_http(&modules).await?;
+    // Ok(handle)
+
+    let handle: RpcServerHandle = server_config
+        .into()
+        .start(
+            &RpcModuleBuilder::new(provider, pool, network, executor, events, evm_config)
+                .build(module_config),
+        )
+        .await?;
     Ok(handle)
 }
 
@@ -1275,10 +1282,10 @@ impl RpcServerConfig {
         self.jwt_secret.map(|secret| AuthLayer::new(JwtAuthValidator::new(secret)))
     }
 
-    /// Builds the ws and http server(s).
+    /// Builds and starts the ws and http server(s).
     ///
     /// If both are on the same port, they are combined into one server.
-    pub async fn start_ws_http(
+    pub async fn start(
         &mut self,
         modules: &TransportRpcModules,
     ) -> Result<RpcServerHandle, RpcError> {
@@ -1294,6 +1301,14 @@ impl RpcServerConfig {
             Ipv4Addr::LOCALHOST,
             constants::DEFAULT_WS_RPC_PORT,
         )));
+
+        let metrics = modules.ipc.as_ref().map(RpcRequestMetrics::ipc).unwrap_or_default();
+        let ipc_path =
+            self.ipc_endpoint.clone().unwrap_or_else(|| constants::DEFAULT_IPC_ENDPOINT.into());
+        let builder = self.ipc_server_config.take().expect("error - 0");
+        let ipc =
+            builder.set_rpc_middleware(IpcRpcServiceBuilder::new().layer(metrics)).build(ipc_path);
+        let ipc_handle = Some(ipc.start(modules.ipc.clone().expect("error - 1")).await?);
 
         // If both are configured on the same port, we combine them into one server.
         if self.http_addr == self.ws_addr &&
@@ -1354,8 +1369,8 @@ impl RpcServerConfig {
                 ws_local_addr: Some(addr),
                 http: http_handle,
                 ws: ws_handle,
-                ipc_endpoint: None,
-                ipc: None,
+                ipc_endpoint: self.ipc_endpoint.clone(),
+                ipc: ipc_handle,
                 jwt_secret: self.jwt_secret,
             });
         }
@@ -1419,8 +1434,8 @@ impl RpcServerConfig {
             ws_local_addr,
             http: http_handle,
             ws: ws_handle,
-            ipc_endpoint: None,
-            ipc: None,
+            ipc_endpoint: self.ipc_endpoint.clone(),
+            ipc: ipc_handle,
             jwt_secret: self.jwt_secret,
         })
     }
@@ -1629,52 +1644,6 @@ impl TransportRpcModules {
         self.merge_ws(other.clone())?;
         self.merge_ipc(other)?;
         Ok(())
-    }
-}
-
-/// Container type for ipc server
-#[allow(missing_debug_implementations)]
-pub struct RpcServer {
-    /// ipc server
-    ipc: Option<IpcServer<Identity, Stack<RpcRequestMetrics, Identity>>>,
-}
-
-// === impl RpcServer ===
-
-impl RpcServer {
-    /// Returns the endpoint of the ipc server if started.
-    pub fn ipc_endpoint(&self) -> Option<String> {
-        self.ipc.as_ref().map(|ipc| ipc.endpoint())
-    }
-
-    /// Starts the configured server by spawning the servers on the tokio runtime.
-    ///
-    /// This returns an [RpcServerHandle] that's connected to the server task(s) until the server is
-    /// stopped or the [RpcServerHandle] is dropped.
-    #[instrument(name = "start", skip_all, fields(ipc = ?self.ipc_endpoint()), target = "rpc", level = "TRACE")]
-    #[allow(dead_code, unused_variables)]
-    pub async fn start(self, modules: TransportRpcModules) -> Result<RpcServerHandle, RpcError> {
-        trace!(target: "rpc", "staring RPC server");
-        let Self { ipc: ipc_server } = self;
-        let TransportRpcModules { config, http, ws, ipc } = modules;
-        let mut handle = RpcServerHandle {
-            http_local_addr: None,
-            ws_local_addr: None,
-            http: None,
-            ws: None,
-            ipc_endpoint: None,
-            ipc: None,
-            jwt_secret: None,
-        };
-
-        if let Some((server, module)) =
-            ipc_server.and_then(|server| ipc.map(|module| (server, module)))
-        {
-            handle.ipc_endpoint = Some(server.endpoint());
-            handle.ipc = Some(server.start(module).await?);
-        }
-
-        Ok(handle)
     }
 }
 
