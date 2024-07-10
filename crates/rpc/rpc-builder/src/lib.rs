@@ -1165,18 +1165,45 @@ use tower::Layer;
 impl<RpcMiddleware> RpcServerConfig<RpcMiddleware>
 where
     RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-    <RpcMiddleware as Layer<RpcService>>::Service: Send,
-    <RpcMiddleware as Layer<RpcService>>::Service: std::marker::Sync,
+    <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync
 {
+    
+    /// Creates a new config with only http set
+    pub fn http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+        //Self::default().with_http(config)
+        self.http_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+        self
+    }
+
+    /// Creates a new config with only ws set
+    pub fn ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+        //Self::default().with_ws(config)
+        self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+        self
+    }
+
+    /// Creates a new config with only ipc set
+    pub fn ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
+       // Self::default().with_ipc(config)
+       self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+       self
+    }
+
+    /// Configure the RPC middleware
+    pub fn with_rpc_middleware(mut self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
+        self.rpc_middleware = rpc_middleware;
+        self
+    }
+
     /// Configures the http server
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-        self.http_server_config =
-            Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-        self
-    }
+    // pub fn with_http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+    //     self.http_server_config =
+    //         Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+    //     self
+    // }
 
     /// Configure the cors domains for http _and_ ws
     pub fn with_cors(self, cors_domain: Option<String>) -> Self {
@@ -1199,10 +1226,10 @@ where
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-        self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-        self
-    }
+    // pub fn with_ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+    //     self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+    //     self
+    // }
 
     /// Configures the [`SocketAddr`] of the http server
     ///
@@ -1226,10 +1253,10 @@ where
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    pub fn with_ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
-        self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-        self
-    }
+    // pub fn with_ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
+    //     self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+    //     self
+    // }
 
     /// Sets a custom [`IdProvider`] for all configured transports.
     ///

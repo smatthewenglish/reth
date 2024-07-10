@@ -41,6 +41,7 @@ async fn test_ws_addr_in_use() {
     let builder = test_rpc_builder();
     let server = builder
         .build(TransportRpcModuleConfig::set_ws(vec![RethRpcModule::Admin]), EthApiBuild::build);
+    //let result = RpcServerConfig::<tower::layer::util::Identity>::ws(Default::default()).with_ws_address(addr).start(&server).await;
     let result = RpcServerConfig::ws(Default::default()).with_ws_address(addr).start(&server).await;
     let err = result.unwrap_err();
     assert!(is_addr_in_use_kind(&err, ServerKind::WS(addr)), "{err}");
