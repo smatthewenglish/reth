@@ -1142,9 +1142,9 @@ pub struct RpcServerConfig<RpcMiddleware = Identity> {
 
 // === impl RpcServerConfig ===
 
-impl Default for RpcServerConfig<Identity> {
+impl RpcServerConfig<Identity> {
     fn default() -> Self {
-        Self {
+        RpcServerConfig {
             http_server_config: None,
             http_cors_domains: None,
             http_addr: None,
@@ -1157,6 +1157,21 @@ impl Default for RpcServerConfig<Identity> {
             rpc_middleware: RpcServiceBuilder::new(),
         }
     }
+
+    /// Creates a new config with only http set
+    pub fn http(config: ServerBuilder<Identity, Identity>) -> Self {
+        Self::default().with_http(config)
+    }
+
+    /// Creates a new config with only ws set
+    pub fn ws(config: ServerBuilder<Identity, Identity>) -> Self {
+        Self::default().with_ws(config)
+    }
+
+    /// Creates a new config with only ipc set
+    pub fn ipc(config: IpcServerBuilder<Identity, Identity>) -> Self {
+        Self::default().with_ipc(config)
+    }
 }
 
 use jsonrpsee::server::middleware::rpc::{RpcService, RpcServiceT};
@@ -1165,45 +1180,51 @@ use tower::Layer;
 impl<RpcMiddleware> RpcServerConfig<RpcMiddleware>
 where
     RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-    <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync
+    <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
 {
-    
-    /// Creates a new config with only http set
-    pub fn http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-        //Self::default().with_http(config)
-        self.http_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-        self
+    /// Add middleware...
+    pub fn with_rpc_middleware<M>(
+        self,
+        rpc_middleware: RpcServiceBuilder<M>,
+    ) -> RpcServerConfig<M> {
+        RpcServerConfig {
+            http_server_config: self.http_server_config,
+            http_cors_domains: self.http_cors_domains,
+            http_addr: self.http_addr,
+            ws_server_config: self.ws_server_config,
+            ws_cors_domains: self.ws_cors_domains,
+            ws_addr: self.ws_addr,
+            ipc_server_config: self.ipc_server_config,
+            ipc_endpoint: self.ipc_endpoint,
+            jwt_secret: self.jwt_secret,
+            rpc_middleware,
+        }
     }
 
-    /// Creates a new config with only ws set
-    pub fn ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-        //Self::default().with_ws(config)
-        self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-        self
-    }
+    // /// Creates a new config with only http set
+    // pub fn http(config: ServerBuilder<Identity, Identity>) -> Self {
+    //     Self::default().with_http(config)
+    // }
 
-    /// Creates a new config with only ipc set
-    pub fn ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
-       // Self::default().with_ipc(config)
-       self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-       self
-    }
+    // /// Creates a new config with only ws set
+    // pub fn ws(config: ServerBuilder<Identity, Identity>) -> Self {
+    //     Self::default().with_ws(config)
+    // }
 
-    /// Configure the RPC middleware
-    pub fn with_rpc_middleware(mut self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
-        self.rpc_middleware = rpc_middleware;
-        self
-    }
+    // /// Creates a new config with only ipc set
+    // pub fn ipc(config: IpcServerBuilder<Identity, Identity>) -> Self {
+    //     Self::default().with_ipc(config)
+    // }
 
     /// Configures the http server
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    // pub fn with_http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-    //     self.http_server_config =
-    //         Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-    //     self
-    // }
+    pub fn with_http(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+        self.http_server_config =
+            Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+        self
+    }
 
     /// Configure the cors domains for http _and_ ws
     pub fn with_cors(self, cors_domain: Option<String>) -> Self {
@@ -1226,10 +1247,10 @@ where
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    // pub fn with_ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
-    //     self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-    //     self
-    // }
+    pub fn with_ws(mut self, config: ServerBuilder<Identity, Identity>) -> Self {
+        self.ws_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+        self
+    }
 
     /// Configures the [`SocketAddr`] of the http server
     ///
@@ -1253,10 +1274,10 @@ where
     ///
     /// Note: this always configures an [`EthSubscriptionIdProvider`] [`IdProvider`] for
     /// convenience. To set a custom [`IdProvider`], please use [`Self::with_id_provider`].
-    // pub fn with_ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
-    //     self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
-    //     self
-    // }
+    pub fn with_ipc(mut self, config: IpcServerBuilder<Identity, Identity>) -> Self {
+        self.ipc_server_config = Some(config.set_id_provider(EthSubscriptionIdProvider::default()));
+        self
+    }
 
     /// Sets a custom [`IdProvider`] for all configured transports.
     ///
