@@ -322,6 +322,7 @@ mod tests {
         //println!("{:?}", result);
 
         use std::path::Path;
+        //use reth_primitives::{Address, hex};
 
         let path = Path::new("/Users/seanmatt/Library/Application Support/reth/mainnet/db");
 
@@ -334,9 +335,14 @@ mod tests {
         //let mut cursor = tx.cursor_write::<tables::AccountChangeSets>().unwrap();
         
         let tx = db.tx().unwrap();
-        let mut cursor = tx.cursor_read::<tables::AccountChangeSets>().unwrap();
+        let mut cursor = tx.cursor_read::<tables::PlainAccountState>().unwrap();
 
-        let value = cursor.seek(0);
+        use reth_primitives::alloy_primitives::{address, b256, bytes, Address};
+        //let address = address!("1F98431c8aD98523631AE4a59f267346ea31F984");
+        let checksummed = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
+        let address = Address::parse_checksummed(checksummed, None).unwrap();
+
+        let value = cursor.seek(address);
         println!("{:?}", value);
     }
 }
