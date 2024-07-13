@@ -186,6 +186,7 @@ mod tests {
     use assert_matches::assert_matches;
     use reth_db_api::{
         cursor::DbCursorRO, database::Database, models::ClientVersion, transaction::DbTx,
+        //cursor::DbCursorRO, database::Database, models::ClientVersion, transaction::{DbTx, DbTxMut},
     };
     use reth_libmdbx::MaxReadTransactionDuration;
     use std::time::Duration;
@@ -314,5 +315,28 @@ mod tests {
                 vec![first_version, second_version, third_version]
             );
         }
+    }
+
+    #[test]
+    fn db_client_y() {
+        //println!("{:?}", result);
+
+        use std::path::Path;
+
+        let path = Path::new("/Users/seanmatt/Library/Application Support/reth/mainnet/db");
+
+        let third_version = ClientVersion { version: String::from("v3"), ..Default::default() };
+        let db_args = DatabaseArguments::new(third_version.clone());
+        
+        let db = open_db(path, db_args).unwrap();
+        
+        //let tx = db.tx_mut().unwrap();
+        //let mut cursor = tx.cursor_write::<tables::AccountChangeSets>().unwrap();
+        
+        let tx = db.tx().unwrap();
+        let mut cursor = tx.cursor_read::<tables::AccountChangeSets>().unwrap();
+
+        let value = cursor.seek(0);
+        println!("{:?}", value);
     }
 }
