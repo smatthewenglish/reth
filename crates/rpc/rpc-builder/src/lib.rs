@@ -1400,22 +1400,22 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                             .option_layer(Self::maybe_cors_layer(cors)?)
                             .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                     )
-                    .set_rpc_middleware(
-                        RpcServiceBuilder::new().layer(
-                            modules
-                                .http
-                                .as_ref()
-                                .or(modules.ws.as_ref())
-                                .map(RpcRequestMetrics::same_port)
-                                .unwrap_or_default(),
-                        ),
-                    )
                     // .set_rpc_middleware(
-                    //     self.rpc_middleware.clone()
-                    //     .layer(
-                    //         modules.http.as_ref().or(modules.ws.as_ref())
-                    //         .map(RpcRequestMetrics::same_port).unwrap_or_default())
+                    //     RpcServiceBuilder::new().layer(
+                    //         modules
+                    //             .http
+                    //             .as_ref()
+                    //             .or(modules.ws.as_ref())
+                    //             .map(RpcRequestMetrics::same_port)
+                    //             .unwrap_or_default(),
+                    //     ),
                     // )
+                    .set_rpc_middleware(
+                        self.rpc_middleware.clone()
+                        .layer(
+                            modules.http.as_ref().or(modules.ws.as_ref())
+                            .map(RpcRequestMetrics::same_port).unwrap_or_default())
+                    )
                     .build(http_socket_addr)
                     .await
                     .map_err(|err| {
@@ -1503,17 +1503,17 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_cors_layer(self.http_cors_domains.clone())?)
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
-                .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
-                        modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
-                    ),
-                )
                 // .set_rpc_middleware(
-                //     self.rpc_middleware.clone()
-                //     .layer(
-                //         modules.http.as_ref()
-                //         .map(RpcRequestMetrics::http).unwrap_or_default())
+                //     RpcServiceBuilder::new().layer(
+                //         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
+                //     ),
                 // )
+                .set_rpc_middleware(
+                    self.rpc_middleware.clone()
+                    .layer(
+                        modules.http.as_ref()
+                        .map(RpcRequestMetrics::http).unwrap_or_default())
+                )
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
@@ -1533,12 +1533,12 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
         //             Stack<RpcRequestMetrics, RpcMiddleware>
         //         > = ws_server.expect("fix dis");
 
-        let sv = ws_server.expect("fix dis");
-        let xod = modules.ws.clone().expect("ws server error");
-        ws_handle = Some(sv.start(xod));
+        // let sv = ws_server.expect("fix dis");
+        // let xod = modules.ws.clone().expect("ws server error");
+        // ws_handle = Some(sv.start(xod));
 
-        // ws_handle = ws_server
-        //     .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
+        ws_handle = ws_server
+            .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
 
         Ok(RpcServerHandle {
             http_local_addr,
