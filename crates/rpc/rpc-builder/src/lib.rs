@@ -1141,9 +1141,10 @@ pub struct RpcServerConfig<RpcMiddleware = Identity> {
     /// JWT secret for authentication
     jwt_secret: Option<JwtSecret>,
     /// Configurable RPC middleware
-    #[allow(dead_code)]
     rpc_middleware: RpcServiceBuilder<RpcMiddleware>,
 }
+
+// Assuming RpcMiddleware should layer over RpcRequestMetricsService
 
 // === impl RpcServerConfig ===
 
@@ -1337,8 +1338,12 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
     where
-        RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-        <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+        // RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
+        // <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+        RpcMiddleware: tower::Layer<RpcService> + Clone + Send + 'static,
+        for<'a> <RpcMiddleware as tower::Layer<RpcService>>::Service: RpcServiceT<'a>,
+        //<RpcMiddleware as Layer<RpcService>>::Service: Send,
+        <RpcMiddleware as Layer<RpcService>>::Service: std::marker::Sync + Send,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1405,6 +1410,12 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                                 .unwrap_or_default(),
                         ),
                     )
+                    // .set_rpc_middleware(
+                    //     self.rpc_middleware.clone()
+                    //     .layer(
+                    //         modules.http.as_ref().or(modules.ws.as_ref())
+                    //         .map(RpcRequestMetrics::same_port).unwrap_or_default())
+                    // )
                     .build(http_socket_addr)
                     .await
                     .map_err(|err| {
@@ -1435,6 +1446,25 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
         let mut http_local_addr = None;
         let mut http_server = None;
 
+        //use tower::layer::util::Identity;
+        //let rmw = RpcServiceBuilder::new().layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).
+        // unwrap_or_default());
+
+        //let rmw: RpcServiceBuilder<Stack<RpcRequestMetrics, Identity>> =
+        // RpcServiceBuilder::new().layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).
+        // unwrap_or_default()); let rmw: RpcServiceBuilder<Stack<RpcRequestMetrics,
+        // RpcMiddleware>> =
+        // self.rpc_middleware.clone().layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).
+        // unwrap_or_default());
+
+        //: RpcServiceBuilder<RpcMiddleware>
+        // let layer: RpcRequestMetrics =
+        //     modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default();
+        // let rmw: RpcServiceBuilder<Stack<RpcRequestMetrics, Identity>> =
+        //     RpcServiceBuilder::new().layer(layer.clone());
+        // let rmx: RpcServiceBuilder<Stack<RpcRequestMetrics, RpcMiddleware>> =
+        //     self.rpc_middleware.clone().layer(layer);
+
         if let Some(builder) = self.ws_server_config {
             let server = builder
                 .ws_only()
@@ -1443,8 +1473,14 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_cors_layer(self.ws_cors_domains.clone())?)
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
+                // .set_rpc_middleware(
+                //     RpcServiceBuilder::new()
+                //         .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).
+                // unwrap_or_default()), )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new()
+                    //rmw
+                    self.rpc_middleware
+                        .clone()
                         .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default()),
                 )
                 .build(ws_socket_addr)
@@ -1472,6 +1508,12 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
                     ),
                 )
+                // .set_rpc_middleware(
+                //     self.rpc_middleware.clone()
+                //     .layer(
+                //         modules.http.as_ref()
+                //         .map(RpcRequestMetrics::http).unwrap_or_default())
+                // )
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
@@ -1484,8 +1526,20 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
 
         http_handle = http_server
             .map(|http_server| http_server.start(modules.http.clone().expect("http server error")));
-        ws_handle = ws_server
-            .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
+
+        // let sv: Server<
+        //             Stack<Either<AuthLayer<JwtAuthValidator>, Identity>,
+        //             Stack<Either<CorsLayer, Identity>, Identity>>,
+        //             Stack<RpcRequestMetrics, RpcMiddleware>
+        //         > = ws_server.expect("fix dis");
+
+        let sv = ws_server.expect("fix dis");
+        let xod = modules.ws.clone().expect("ws server error");
+        ws_handle = Some(sv.start(xod));
+
+        // ws_handle = ws_server
+        //     .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
+
         Ok(RpcServerHandle {
             http_local_addr,
             ws_local_addr,
