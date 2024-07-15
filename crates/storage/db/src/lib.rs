@@ -339,7 +339,10 @@ mod tests {
 
         use reth_primitives::alloy_primitives::{address, b256, bytes, Address};
         //let address = address!("1F98431c8aD98523631AE4a59f267346ea31F984");
-        let checksummed = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
+        //let address = address!("E592427A0AEce92De3Edee1F18E0157C05861564");
+
+        //let checksummed = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
+        let checksummed = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
         let address = Address::parse_checksummed(checksummed, None).unwrap();
 
         let value = cursor.seek(address);
