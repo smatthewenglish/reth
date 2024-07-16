@@ -2950,6 +2950,7 @@ dependencies = [
  "eyre",
  "futures",
  "jsonrpsee",
+ "metrics",
  "reth",
  "reth-chainspec",
  "reth-db",

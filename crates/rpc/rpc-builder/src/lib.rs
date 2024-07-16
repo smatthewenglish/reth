@@ -207,7 +207,8 @@ pub mod eth;
 pub use eth::EthHandlers;
 
 // Rpc server metrics
-mod metrics;
+#[allow(missing_docs)]
+pub mod metrics;
 
 /// Convenience function for starting a server in one step.
 #[allow(clippy::too_many_arguments)]
@@ -1210,10 +1211,6 @@ impl RpcServerConfig {
     }
 }
 
-//use crate::metrics::RpcRequestMetricsService;
-//use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
-use jsonrpsee::server::middleware::rpc::RpcLogger;
-
 impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Configure rpc middleware
     pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
@@ -1339,10 +1336,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// If both http and ws are on the same port, they are combined into one server.
     ///
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
-    pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError> 
-    where 
+    pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
+    where
         RpcMiddleware: tower::Layer<RpcService> + Clone + Send + 'static,
-	    for<'a> <RpcMiddleware as Layer<RpcService>>::Service: RpcServiceT<'a>,
+        for<'a> <RpcMiddleware as Layer<RpcService>>::Service: RpcServiceT<'a> + Send + Sync,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1463,10 +1460,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             ws_server = Some(server);
         }
 
-        use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
-        let logger_layer = RpcLoggerLayer::new(1024);
-
-        let counter: Arc<Mutex<Counter>> = Default::default();
+        //let counter: Arc<Mutex<Counter>> = Default::default();
 
         if let Some(builder) = self.http_server_config {
             let server = builder
@@ -1477,10 +1471,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new()
-                        .layer(modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default())
-                        .layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() })
-                        //.layer(logger_layer),
+                    //RpcServiceBuilder::new()
+                    self.rpc_middleware.clone()
+                        //.layer(modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default())
+                        //.layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() })
                 )
                 .build(http_socket_addr)
                 .await
@@ -1509,62 +1503,96 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
 }
 
 use futures::{future::BoxFuture, FutureExt};
-//use futures_util::future::BoxFuture;
+use jsonrpsee::{
+    types::{Id, Request},
+    MethodResponse,
+};
 use std::sync::Mutex;
-//use futures_util::{future::BoxFuture, FutureExt};
-//use futures::{future::BoxFuture, FutureExt};
-use jsonrpsee::MethodResponse;
-use jsonrpsee::types::{ErrorObject, ErrorObjectOwned, Id, Request};
 
-#[derive(Default, Clone)]
-struct Counter {
-	/// (Number of started requests, number of finished requests)
-	requests: (u32, u32),
-	/// Mapping method names to (number of calls, ids of successfully completed calls)
-	calls: HashMap<String, (u32, Vec<Id<'static>>)>,
+/// .
+#[derive(Default, Clone, Debug)]
+pub struct Counter {
+    /// (Number of started requests, number of finished requests)
+    requests: (u32, u32),
+    /// Mapping method names to (number of calls, ids of successfully completed calls)
+    calls: HashMap<String, (u32, Vec<Id<'static>>)>,
 }
 
-#[derive(Clone)]
+/// .
+#[derive(Clone, Debug)]
 pub struct CounterMiddleware<S> {
-	service: S,
-	counter: Arc<Mutex<Counter>>,
+    /// .
+    pub service: S,
+    /// .
+    pub counter: Arc<Mutex<Counter>>,
 }
 
 impl<'a, S> RpcServiceT<'a> for CounterMiddleware<S>
 where
-	S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+    S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
 {
-	type Future = BoxFuture<'a, MethodResponse>;
+    type Future = BoxFuture<'a, MethodResponse>;
 
-	fn call(&self, request: Request<'a>) -> Self::Future {
-		let counter = self.counter.clone();
-		let service = self.service.clone();
+    fn call(&self, request: Request<'a>) -> Self::Future {
+        let counter = self.counter.clone();
+        let service = self.service.clone();
 
-		async move {
-			let name = request.method.to_string();
-			let id = request.id.clone();
+        async move {
+            let name = request.method.to_string();
+            let id = request.id.clone();
 
-			{
-				let mut n = counter.lock().unwrap();
-				n.requests.0 += 1;
-				let entry = n.calls.entry(name.clone()).or_insert((0, Vec::new()));
-				entry.0 += 1;
-			}
+            {
+                let mut n = counter.lock().unwrap();
+                n.requests.0 += 1;
+                let entry = n.calls.entry(name.clone()).or_insert((0, Vec::new()));
+                entry.0 += 1;
+            }
 
-			let rp = service.call(request).await;
+            let rp = service.call(request).await;
 
-			{
-				let mut n = counter.lock().unwrap();
-				n.requests.1 += 1;
-				if rp.is_success() {
-					n.calls.get_mut(&name).unwrap().1.push(id.into_owned());
-				}
-			}
+            {
+                let mut n = counter.lock().unwrap();
+                n.requests.1 += 1;
+                if rp.is_success() {
+                    n.calls.get_mut(&name).unwrap().1.push(id.into_owned());
+                }
+            }
 
-			rp
-		}
-		.boxed()
-	}
+            rp
+        }
+        .boxed()
+    }
+}
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Clone, Debug)]
+#[allow(missing_docs)]
+pub struct GlobalCalls<S> {
+    pub service: S,
+    pub count: Arc<AtomicUsize>,
+}
+
+#[allow(missing_docs)]
+impl<'a, S> RpcServiceT<'a> for GlobalCalls<S>
+where
+    S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+{
+    type Future = BoxFuture<'a, MethodResponse>;
+
+    fn call(&self, req: Request<'a>) -> Self::Future {
+        let count = self.count.clone();
+        let service = self.service.clone();
+
+        async move {
+            let rp = service.call(req).await;
+            count.fetch_add(1, Ordering::SeqCst);
+            let count = count.load(Ordering::SeqCst);
+            println!("the server has processed calls={count} in total");
+            rp
+        }
+        .boxed()
+    }
 }
 
 /// Holds modules to be installed per transport type
@@ -1707,7 +1735,7 @@ pub struct TransportRpcModules<Context = ()> {
     /// The original config
     config: TransportRpcModuleConfig,
     /// rpcs module for http
-    http: Option<RpcModule<Context>>,
+    pub http: Option<RpcModule<Context>>,
     /// rpcs module for ws
     ws: Option<RpcModule<Context>>,
     /// rpcs module for ipc
