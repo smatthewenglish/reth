@@ -1210,6 +1210,10 @@ impl RpcServerConfig {
     }
 }
 
+//use crate::metrics::RpcRequestMetricsService;
+//use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
+use jsonrpsee::server::middleware::rpc::RpcLogger;
+
 impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Configure rpc middleware
     pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
@@ -1335,10 +1339,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// If both http and ws are on the same port, they are combined into one server.
     ///
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
-    pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
-    where
-        RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-        <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+    pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError> 
+    where 
+        RpcMiddleware: tower::Layer<RpcService> + Clone + Send + 'static,
+	    for<'a> <RpcMiddleware as Layer<RpcService>>::Service: RpcServiceT<'a>,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1459,6 +1463,11 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             ws_server = Some(server);
         }
 
+        use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
+        let logger_layer = RpcLoggerLayer::new(1024);
+
+        let counter: Arc<Mutex<Counter>> = Default::default();
+
         if let Some(builder) = self.http_server_config {
             let server = builder
                 .http_only()
@@ -1468,9 +1477,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
-                        modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
-                    ),
+                    RpcServiceBuilder::new()
+                        .layer(modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default())
+                        .layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() })
+                        //.layer(logger_layer),
                 )
                 .build(http_socket_addr)
                 .await
@@ -1496,6 +1506,65 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             jwt_secret: self.jwt_secret,
         })
     }
+}
+
+use futures::{future::BoxFuture, FutureExt};
+//use futures_util::future::BoxFuture;
+use std::sync::Mutex;
+//use futures_util::{future::BoxFuture, FutureExt};
+//use futures::{future::BoxFuture, FutureExt};
+use jsonrpsee::MethodResponse;
+use jsonrpsee::types::{ErrorObject, ErrorObjectOwned, Id, Request};
+
+#[derive(Default, Clone)]
+struct Counter {
+	/// (Number of started requests, number of finished requests)
+	requests: (u32, u32),
+	/// Mapping method names to (number of calls, ids of successfully completed calls)
+	calls: HashMap<String, (u32, Vec<Id<'static>>)>,
+}
+
+#[derive(Clone)]
+pub struct CounterMiddleware<S> {
+	service: S,
+	counter: Arc<Mutex<Counter>>,
+}
+
+impl<'a, S> RpcServiceT<'a> for CounterMiddleware<S>
+where
+	S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+{
+	type Future = BoxFuture<'a, MethodResponse>;
+
+	fn call(&self, request: Request<'a>) -> Self::Future {
+		let counter = self.counter.clone();
+		let service = self.service.clone();
+
+		async move {
+			let name = request.method.to_string();
+			let id = request.id.clone();
+
+			{
+				let mut n = counter.lock().unwrap();
+				n.requests.0 += 1;
+				let entry = n.calls.entry(name.clone()).or_insert((0, Vec::new()));
+				entry.0 += 1;
+			}
+
+			let rp = service.call(request).await;
+
+			{
+				let mut n = counter.lock().unwrap();
+				n.requests.1 += 1;
+				if rp.is_success() {
+					n.calls.get_mut(&name).unwrap().1.push(id.into_owned());
+				}
+			}
+
+			rp
+		}
+		.boxed()
+	}
 }
 
 /// Holds modules to be installed per transport type

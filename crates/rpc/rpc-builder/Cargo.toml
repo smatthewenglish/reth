@@ -34,6 +34,7 @@ tower-http = { workspace = true, features = ["full"] }
 tower = { workspace = true, features = ["full"] }
 http.workspace = true
 pin-project.workspace = true
+futures.workspace = true
 
 # metrics
 reth-metrics = { workspace = true, features = ["common"] }
