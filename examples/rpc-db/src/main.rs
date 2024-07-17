@@ -89,30 +89,15 @@ async fn main() -> eyre::Result<()> {
 
     // Start the server & keep it alive
 
-    //use reth::rpc::builder::metrics::RpcRequestMetrics;
     use std::sync::atomic::AtomicUsize;
 
     let global_cnt = Arc::new(AtomicUsize::new(0));
     let counter: Arc<Mutex<Counter>> = Default::default();
 
-    //.layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() })
-    //.layer(RpcRequestMetrics::http(&server.http.clone().expect("module error")));
-    //.layer_fn(move |service| GlobalCalls { service, count: global_cnt.clone() });
-
     let rpc_middleware = RpcServiceBuilder::new()
         .layer_fn(move |service| GlobalCalls { service, count: global_cnt.clone() })
         .layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() });
-
-    // let rpc_middleware = RpcServiceBuilder::new()
-    //     .layer_fn(move |service| CounterMiddleware { service, counter: counter.clone() });
-    //.layer(RpcRequestMetrics::http(&server.http.clone().expect("module error")));
-
-    // let server_args =
-    // RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
     let rpcm = RpcServerConfig::finalize_rpc(rpc_middleware, &server);
-
-    // let _handle = server_args.start(&server).await?;
-    // futures::future::pending::<()>().await;
 
     // Start the server & keep it alive
     let server_args = RpcServerConfig::http(Default::default())

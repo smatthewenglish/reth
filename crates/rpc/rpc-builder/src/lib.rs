@@ -1357,9 +1357,6 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     where
         RpcMiddleware: tower::Layer<RpcService> + Clone + Send + 'static,
         for<'a> <RpcMiddleware as Layer<RpcService>>::Service: RpcServiceT<'a> + Send + Sync,
-        // RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>>,
-        // for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
-        //     RpcServiceT<'a> + Send + Sync,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
