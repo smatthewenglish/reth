@@ -1123,13 +1123,13 @@ where
 #[derive(Debug)]
 pub struct RpcServerConfig<RpcMiddleware = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<Identity, RpcMiddleware>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<Identity, RpcMiddleware>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
@@ -1212,12 +1212,16 @@ impl RpcServerConfig {
 
 impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Configure rpc middleware
-    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
+    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> 
+    where 
+        RpcServiceBuilder<T>: Clone
+    {
         RpcServerConfig {
-            http_server_config: self.http_server_config,
+            // check here that it exists first...
+            http_server_config: Some(self.http_server_config.expect("error 0").set_rpc_middleware(rpc_middleware.clone())),
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
-            ws_server_config: self.ws_server_config,
+            ws_server_config: Some(self.ws_server_config.expect("error 1").set_rpc_middleware(rpc_middleware.clone())),
             ws_cors_domains: self.ws_cors_domains,
             ws_addr: self.ws_addr,
             ipc_server_config: self.ipc_server_config,
@@ -1336,9 +1340,9 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     ///
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
-    where
-        RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-        <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+    // where
+    //     RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
+    //     <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1460,6 +1464,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
         }
 
         if let Some(builder) = self.http_server_config {
+
             let server = builder
                 .http_only()
                 .set_http_middleware(
@@ -1482,8 +1487,11 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             http_server = Some(server);
         }
 
-        http_handle = http_server
-            .map(|http_server| http_server.start(modules.http.clone().expect("http server error")));
+        // http_handle = http_server
+        //     .map(|http_server| http_server.start(modules.http.clone().expect("http server error")));
+        http_handle = Some(Self::start_server(modules, http_server.expect("server error")).await);
+
+
         ws_handle = ws_server
             .map(|ws_server| ws_server.start(modules.ws.clone().expect("ws server error")));
         Ok(RpcServerHandle {
@@ -1496,7 +1504,25 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             jwt_secret: self.jwt_secret,
         })
     }
+
+    pub(crate) fn build_server(builder: ServerBuilder<Identity, RpcMiddleware>) -> Server<Stack<Either<AuthLayer<JwtAuthValidator>, Identity>, Stack<Either<CorsLayer, Identity>, Identity>>, Stack<RpcRequestMetrics, Identity>> {
+
+    }
+
+    /// docs
+    pub(crate) async fn start_server(
+        modules: &TransportRpcModules,
+        http_server: Server<Stack<Either<AuthLayer<JwtAuthValidator>, Identity>, Stack<Either<CorsLayer, Identity>, Identity>>, Stack<RpcRequestMetrics, Identity>>
+    ) -> ServerHandle {
+
+        return http_server.start(modules.http.clone().expect("http server error"));
+    }
+
 }
+
+use tower::util::Either;
+use jsonrpsee::server::Server;
+//use jsonrpsee::server::ServerBuilder;
 
 /// Holds modules to be installed per transport type
 ///
