@@ -174,12 +174,14 @@ use reth_rpc_layer::{AuthLayer, Claims, JwtAuthValidator, JwtSecret};
 use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
-use tower::Layer;
+use tower::{Layer, ServiceBuilder};
 use tower_http::cors::CorsLayer;
 
 use crate::{
-    auth::AuthRpcModule, cors::CorsDomainError, error::WsHttpSamePortError,
-    metrics::RpcRequestMetrics,
+    auth::AuthRpcModule,
+    cors::CorsDomainError,
+    error::WsHttpSamePortError,
+    metrics::{RpcRequestMetrics, RpcRequestMetricsService},
 };
 
 // re-export for convenience
@@ -1121,15 +1123,15 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Debug)]
-pub struct RpcServerConfig<RpcMiddleware = Identity> {
+pub struct RpcServerConfig<HttpMiddleware = Identity, RpcMiddleware = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
@@ -1141,13 +1143,14 @@ pub struct RpcServerConfig<RpcMiddleware = Identity> {
     /// JWT secret for authentication
     jwt_secret: Option<JwtSecret>,
     /// Configurable RPC middleware
-    #[allow(dead_code)]
     rpc_middleware: RpcServiceBuilder<RpcMiddleware>,
+    /// Configurable HTTP middleware
+    http_middleware: ServiceBuilder<HttpMiddleware>,
 }
 
 // === impl RpcServerConfig ===
 
-impl Default for RpcServerConfig<Identity> {
+impl Default for RpcServerConfig<Identity, Identity> {
     /// Create a new config instance
     fn default() -> Self {
         Self {
@@ -1161,6 +1164,7 @@ impl Default for RpcServerConfig<Identity> {
             ipc_endpoint: None,
             jwt_secret: None,
             rpc_middleware: RpcServiceBuilder::new(),
+            http_middleware: ServiceBuilder::new(),
         }
     }
 }
@@ -1210,20 +1214,32 @@ impl RpcServerConfig {
     }
 }
 
-impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
+impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware>
+where
+    RpcMiddleware: Clone,
+{
     /// Configure rpc middleware
-    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
-        RpcServerConfig {
-            http_server_config: self.http_server_config,
+    pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
+        let mut http_server_config = None;
+        if let Some(value) = self.http_server_config {
+            http_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+        let mut ws_server_config = None;
+        if let Some(value) = self.ws_server_config {
+            ws_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+        Self {
+            http_server_config,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
-            ws_server_config: self.ws_server_config,
+            ws_server_config,
             ws_cors_domains: self.ws_cors_domains,
             ws_addr: self.ws_addr,
             ipc_server_config: self.ipc_server_config,
             ipc_endpoint: self.ipc_endpoint,
             jwt_secret: self.jwt_secret,
             rpc_middleware,
+            http_middleware: self.http_middleware,
         }
     }
 
@@ -1337,8 +1353,9 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
     where
-        RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-        <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+        RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Send + 'static,
+        for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
+            Send + Sync + 'static + RpcServiceT<'a>,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1396,7 +1413,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                             .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                     )
                     .set_rpc_middleware(
-                        RpcServiceBuilder::new().layer(
+                        self.rpc_middleware.clone().layer(
                             modules
                                 .http
                                 .as_ref()
@@ -1444,7 +1461,8 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new()
+                    self.rpc_middleware
+                        .clone()
                         .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default()),
                 )
                 .build(ws_socket_addr)
@@ -1468,7 +1486,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
+                    self.rpc_middleware.clone().layer(
                         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
                     ),
                 )
