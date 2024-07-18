@@ -174,9 +174,8 @@ use reth_rpc_layer::{AuthLayer, Claims, JwtAuthValidator, JwtSecret};
 use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
-use tower::Layer;
+use tower::{Layer, ServiceBuilder};
 use tower_http::cors::CorsLayer;
-use tower::ServiceBuilder;
 
 use crate::{
     auth::AuthRpcModule,
