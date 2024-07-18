@@ -21,12 +21,12 @@ use tower::Layer;
 /// - Request metrics: metrics for each RPC method (e.g. number of calls started, time taken to
 ///   process a call)
 #[derive(Default, Debug, Clone)]
-pub(crate) struct RpcRequestMetrics {
+pub struct RpcRequestMetrics {
     inner: Arc<RpcServerMetricsInner>,
 }
 
 impl RpcRequestMetrics {
-    pub(crate) fn new(module: &RpcModule<()>, transport: RpcTransport) -> Self {
+    pub fn new(module: &RpcModule<()>, transport: RpcTransport) -> Self {
         Self {
             inner: Arc::new(RpcServerMetricsInner {
                 connection_metrics: transport.connection_metrics(),
@@ -38,7 +38,7 @@ impl RpcRequestMetrics {
     }
 
     /// Creates a new instance of the metrics layer for HTTP.
-    pub(crate) fn http(module: &RpcModule<()>) -> Self {
+    pub fn http(module: &RpcModule<()>) -> Self {
         Self::new(module, RpcTransport::Http)
     }
 
@@ -71,7 +71,7 @@ impl<S> Layer<S> for RpcRequestMetrics {
 
 /// Metrics for the RPC server
 #[derive(Default, Clone, Debug)]
-struct RpcServerMetricsInner {
+pub struct RpcServerMetricsInner {
     /// Connection metrics per transport type
     connection_metrics: RpcServerConnectionMetrics,
     /// Call metrics per RPC method
@@ -174,7 +174,7 @@ impl<F: Future<Output = MethodResponse>> Future for MeteredRequestFuture<F> {
 
 /// The transport protocol used for the RPC connection.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) enum RpcTransport {
+pub enum RpcTransport {
     Http,
     WebSocket,
     #[allow(unused)]

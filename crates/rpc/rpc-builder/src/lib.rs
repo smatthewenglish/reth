@@ -209,6 +209,7 @@ pub mod eth;
 pub use eth::EthHandlers;
 
 // Rpc server metrics
+#[allow(missing_docs)]
 pub mod metrics;
 
 /// Convenience function for starting a server in one step.
@@ -1216,7 +1217,10 @@ impl RpcServerConfig {
 
 impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
     /// Configure rpc middleware
-    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<HttpMiddleware, T>
+    pub fn set_rpc_middleware<T>(
+        self,
+        rpc_middleware: RpcServiceBuilder<T>,
+    ) -> RpcServerConfig<HttpMiddleware, T>
     where
         T: Clone,
     {
@@ -1228,7 +1232,7 @@ impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddlewar
         if let Some(value) = self.ws_server_config {
             ws_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
         }
-        Self {
+        RpcServerConfig::<HttpMiddleware, T> {
             http_server_config,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
@@ -1353,7 +1357,7 @@ impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddlewar
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
     where
-        RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Send + 'static,
+        RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Send + Clone + 'static,
         for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
             Send + Sync + 'static + RpcServiceT<'a>,
     {
@@ -1656,7 +1660,7 @@ pub struct TransportRpcModules<Context = ()> {
     /// The original config
     config: TransportRpcModuleConfig,
     /// rpcs module for http
-    http: Option<RpcModule<Context>>,
+    pub http: Option<RpcModule<Context>>,
     /// rpcs module for ws
     ws: Option<RpcModule<Context>>,
     /// rpcs module for ipc
@@ -1830,23 +1834,24 @@ impl RpcServerHandle {
     }
 }
 
-use std::sync::atomic::{Ordering, AtomicUsize};
 use futures::future::BoxFuture;
-use jsonrpsee::MethodResponse;
-use jsonrpsee::types::Request;
+use jsonrpsee::{types::Request, MethodResponse};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone)]
+#[allow(missing_debug_implementations, missing_docs)]
 pub struct MyMiddleware<S> {
     pub service: S,
     pub count: Arc<AtomicUsize>,
 }
 
 impl<'a, S> RpcServiceT<'a> for MyMiddleware<S>
-where S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+where
+    S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
 {
-   type Future = BoxFuture<'a, MethodResponse>;
+    type Future = BoxFuture<'a, MethodResponse>;
 
-   fn call(&self, req: Request<'a>) -> Self::Future {
+    fn call(&self, req: Request<'a>) -> Self::Future {
         tracing::info!("MyMiddleware processed call {}", req.method);
         let count = self.count.clone();
         let service = self.service.clone();
@@ -1857,7 +1862,7 @@ where S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
             count.fetch_add(1, Ordering::Relaxed);
             rp
         })
-   }
+    }
 }
 
 #[cfg(test)]

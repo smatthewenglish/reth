@@ -14,7 +14,6 @@
 
 use std::{path::Path, sync::Arc};
 
-use std::sync::atomic::AtomicUsize;
 use jsonrpsee::server::middleware::rpc::RpcServiceBuilder;
 use reth::{
     providers::{
@@ -27,16 +26,20 @@ use reth::{
 use reth_chainspec::ChainSpecBuilder;
 use reth_db::mdbx::DatabaseArguments;
 use reth_db_api::models::ClientVersion;
+use std::sync::atomic::AtomicUsize;
 
 // Bringing up the RPC
 use reth::rpc::builder::{
-    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig, MyMiddleware
+    MyMiddleware, RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
 };
 // Configuring the network parts, ideally also wouldn't need to think about this.
 use myrpc_ext::{MyRpcExt, MyRpcExtApiServer};
 use reth::{blockchain_tree::noop::NoopBlockchainTree, tasks::TokioTaskExecutor};
 use reth_node_ethereum::EthEvmConfig;
 use reth_provider::test_utils::TestCanonStateSubscriptions;
+
+
+
 
 // Custom rpc extension
 pub mod myrpc_ext;
@@ -79,16 +82,25 @@ async fn main() -> eyre::Result<()> {
     let custom_rpc = MyRpcExt { provider };
     server.merge_configured(custom_rpc.into_rpc())?;
 
-    use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
-    let logger_layer = RpcLoggerLayer::new(1024);
+    //use jsonrpsee::server::middleware::rpc::RpcLoggerLayer;
+    //let logger_layer = RpcLoggerLayer::new(1024);
+    //.layer(logger_layer)
+    // let rpc_middleware = RpcServiceBuilder::new()
+    // .layer_fn(move |service: ()| MyMiddleware {
+    //     service,
+    //     count: Arc::new(AtomicUsize::new(0)),
+    // });
 
-    let rpc_middleware = RpcServiceBuilder::new()
-        .layer(logger_layer);
-        //.layer_fn(move |service: ()| MyMiddleware { service, count: Arc::new(AtomicUsize::new(0)) });
+
+use reth::rpc::builder::metrics::RpcRequestMetrics;
+let rpc_middleware = RpcServiceBuilder::new().layer(
+    server.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
+);
 
     // Start the server & keep it alive
-    let server_args =
-        RpcServerConfig::http(Default::default()).set_rpc_middleware(rpc_middleware).with_http_address("0.0.0.0:8545".parse()?);
+    let server_args = RpcServerConfig::http(Default::default())
+        .set_rpc_middleware(rpc_middleware)
+        .with_http_address("0.0.0.0:8545".parse()?);
     let _handle = server_args.start(&server).await?;
     futures::future::pending::<()>().await;
 
