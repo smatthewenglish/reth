@@ -12,7 +12,7 @@ use http::HeaderMap;
 use jsonrpsee_http_client::HttpResponse;
 
 mod auth_client_layer;
-mod auth_layer;
+pub mod auth_layer;
 mod jwt_validator;
 
 // Export alloy JWT types

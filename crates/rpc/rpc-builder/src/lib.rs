@@ -147,7 +147,7 @@ use jsonrpsee::{
     core::RegisterMethodError,
     server::{
         middleware::rpc::{RpcService, RpcServiceT},
-        AlreadyStoppedError, IdProvider, RpcServiceBuilder, ServerHandle,
+        AlreadyStoppedError, IdProvider, RpcServiceBuilder, ServerHandle
     },
     Methods, RpcModule,
 };
@@ -176,7 +176,11 @@ use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
 use tower::{Layer, ServiceBuilder};
 
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Cors, CorsLayer};
+
+use tower::util::Either;
+use reth_ipc::server::TowerServiceNoHttp;
+use reth_rpc_layer::auth_layer::AuthService;
 
 use crate::{
     auth::AuthRpcModule,
@@ -1386,8 +1390,29 @@ impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddlewar
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
     where
         RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Clone + Send + 'static,
-        for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
-            Send + Sync + 'static + RpcServiceT<'a>,
+        for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service: Send + Sync + 'static + RpcServiceT<'a>,
+        
+        //HttpMiddleware: Clone + Send,
+        //HttpMiddleware: Layer<Either<Cors<Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>, Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>>,
+
+        // HttpMiddleware: Layer<TowerServiceNoHttp<RpcMiddleware>> + Clone + Send + 'static,
+        // <HttpMiddleware as Layer<TowerServiceNoHttp<RpcMiddleware>>>::Service: Send + Service<String, Response = Option<String>, Error = Box<dyn std::error::Error + Send + Sync + 'static>,>,
+        // <<HttpMiddleware as Layer<TowerServiceNoHttp<RpcMiddleware>>>::Service as Service<String>>::Future: Send + Unpin,
+
+        //HttpMiddleware: Layer<Either<Cors<Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>, Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>>,
+        
+        //HttpMiddleware: Layer<Either<Cors<Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>, Either<AuthService<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>, JwtAuthValidator>, TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>>>,
+
+        HttpMiddleware: Layer<TowerServiceNoHttp<RpcMiddleware>> + Clone + Send + 'static,
+        <HttpMiddleware as Layer<TowerServiceNoHttp<RpcMiddleware>>>::Service: Send + Service<
+            String,
+            Response = Option<String>,
+            Error = Box<dyn std::error::Error + Send + Sync + 'static>,
+        >,
+        <<HttpMiddleware as Layer<TowerServiceNoHttp<RpcMiddleware>>>::Service as Service<String>>::Future: Send + Unpin, 
+
+        //HttpMiddleware: Layer<TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>,   
+        HttpMiddleware: Layer<jsonrpsee::jsonrpsee_server::server::TowerServiceNoHttp<Stack<RpcRequestMetrics, RpcMiddleware>>>    
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1437,10 +1462,13 @@ impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddlewar
             // we merge this into one server using the http setup
             modules.config.ensure_ws_http_identical()?;
 
+            let hmw: ServiceBuilder<Stack<Either<AuthLayer<JwtAuthValidator>, Identity>, Stack<Either<CorsLayer, Identity>, HttpMiddleware>>> = self.http_middleware.clone().option_layer(Self::maybe_cors_layer(cors)?).option_layer(Self::maybe_jwt_layer(self.jwt_secret));
+
             if let Some(builder) = self.http_server_config {
                 let server = builder
                     .set_http_middleware(
-                        tower::ServiceBuilder::new()
+                        //tower::ServiceBuilder::new()
+                        self.http_middleware.clone()
                             .option_layer(Self::maybe_cors_layer(cors)?)
                             .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                     )
@@ -1547,6 +1575,8 @@ impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddlewar
         })
     }
 }
+
+use tower::Service;
 
 /// Holds modules to be installed per transport type
 ///
