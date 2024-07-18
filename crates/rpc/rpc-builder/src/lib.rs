@@ -209,7 +209,8 @@ pub mod eth;
 pub use eth::EthHandlers;
 
 // Rpc server metrics
-mod metrics;
+#[allow(missing_docs)]
+pub mod metrics;
 
 /// Convenience function for starting a server in one step.
 #[allow(clippy::too_many_arguments)]
@@ -1337,10 +1338,10 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
     ///
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
-    where
-        RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Clone + Send + 'static,
-        for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
-            Send + Sync + 'static + RpcServiceT<'a>,
+    where 
+        RpcMiddleware: Clone + Send + 'static,
+        RpcMiddleware: Layer<RpcService>,
+        for<'a> <RpcMiddleware as Layer<RpcService>>::Service: Send + Sync + RpcServiceT<'a> 
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1397,16 +1398,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                             .option_layer(Self::maybe_cors_layer(cors)?)
                             .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                     )
-                    .set_rpc_middleware(
-                        self.rpc_middleware.clone().layer(
-                            modules
-                                .http
-                                .as_ref()
-                                .or(modules.ws.as_ref())
-                                .map(RpcRequestMetrics::same_port)
-                                .unwrap_or_default(),
-                        ),
-                    )
+                    .set_rpc_middleware(self.rpc_middleware.clone())
                     .build(http_socket_addr)
                     .await
                     .map_err(|err| {
@@ -1445,11 +1437,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_cors_layer(self.ws_cors_domains.clone())?)
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
-                .set_rpc_middleware(
-                    self.rpc_middleware
-                        .clone()
-                        .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default()),
-                )
+                .set_rpc_middleware(self.rpc_middleware.clone())
                 .build(ws_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::WS(ws_socket_addr)))?;
@@ -1470,11 +1458,7 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
                         .option_layer(Self::maybe_cors_layer(self.http_cors_domains.clone())?)
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
-                .set_rpc_middleware(
-                    self.rpc_middleware.clone().layer(
-                        modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
-                    ),
-                )
+                .set_rpc_middleware(self.rpc_middleware.clone())
                 .build(http_socket_addr)
                 .await
                 .map_err(|err| RpcError::server_error(err, ServerKind::Http(http_socket_addr)))?;
@@ -1497,6 +1481,38 @@ impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
             ipc_endpoint: self.ipc_endpoint.clone(),
             ipc: ipc_handle,
             jwt_secret: self.jwt_secret,
+        })
+    }
+}
+
+
+use futures::future::BoxFuture;
+use jsonrpsee::{types::Request, MethodResponse};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Clone)]
+#[allow(missing_debug_implementations, missing_docs)]
+pub struct MyMiddleware<S> {
+    pub service: S,
+    pub count: Arc<AtomicUsize>,
+}
+
+impl<'a, S> RpcServiceT<'a> for MyMiddleware<S>
+where
+    S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+{
+    type Future = BoxFuture<'a, MethodResponse>;
+
+    fn call(&self, req: Request<'a>) -> Self::Future {
+        tracing::info!("MyMiddleware processed call {}", req.method);
+        let count = self.count.clone();
+        let service = self.service.clone();
+
+        Box::pin(async move {
+            let rp = service.call(req).await;
+            // Modify the state.
+            count.fetch_add(1, Ordering::Relaxed);
+            rp
         })
     }
 }
@@ -1641,7 +1657,7 @@ pub struct TransportRpcModules<Context = ()> {
     /// The original config
     config: TransportRpcModuleConfig,
     /// rpcs module for http
-    http: Option<RpcModule<Context>>,
+    pub http: Option<RpcModule<Context>>,
     /// rpcs module for ws
     ws: Option<RpcModule<Context>>,
     /// rpcs module for ipc

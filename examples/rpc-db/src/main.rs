@@ -12,7 +12,7 @@
 //! cast rpc myrpcExt_customMethod
 //! ```
 
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::{Arc, atomic::AtomicUsize}};
 
 use reth::{
     providers::{
@@ -28,7 +28,7 @@ use reth_db_api::models::ClientVersion;
 
 // Bringing up the RPC
 use reth::rpc::builder::{
-    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
+    MyMiddleware, RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
 };
 // Configuring the network parts, ideally also wouldn't need to think about this.
 use myrpc_ext::{MyRpcExt, MyRpcExtApiServer};
@@ -77,9 +77,18 @@ async fn main() -> eyre::Result<()> {
     let custom_rpc = MyRpcExt { provider };
     server.merge_configured(custom_rpc.into_rpc())?;
 
+    use reth::rpc::builder::metrics::RpcRequestMetrics;
+    use jsonrpsee::server::middleware::rpc::RpcServiceBuilder;
+
+    let rpc_middleware = RpcServiceBuilder::new()
+    .layer(
+        server.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
+    )
+    .layer_fn(move |service: ()| MyMiddleware { service, count: Arc::new(AtomicUsize::new(0)) });
+
     // Start the server & keep it alive
     let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
+        RpcServerConfig::http(Default::default()).set_rpc_middleware(rpc_middleware).with_http_address("0.0.0.0:8545".parse()?);
     let _handle = server_args.start(&server).await?;
     futures::future::pending::<()>().await;
 
