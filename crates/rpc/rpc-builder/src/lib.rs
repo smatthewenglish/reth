@@ -176,6 +176,7 @@ use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
 use tower::Layer;
 use tower_http::cors::CorsLayer;
+use tower::ServiceBuilder;
 
 use crate::{
     auth::AuthRpcModule,
@@ -1148,8 +1149,6 @@ pub struct RpcServerConfig<HttpMiddleware = Identity, RpcMiddleware = Identity> 
     http_middleware: ServiceBuilder<HttpMiddleware>,
 }
 
-use tower::ServiceBuilder;
-
 // === impl RpcServerConfig ===
 
 impl Default for RpcServerConfig<Identity, Identity> {
@@ -1222,20 +1221,19 @@ where
 {
     /// Configure rpc middleware
     pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
-        let mut xxx = None;
+        let mut http_server_config = None;
         if let Some(value) = self.http_server_config {
-            xxx = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+            http_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
         }
-        let mut yyy = None;
+        let mut ws_server_config = None;
         if let Some(value) = self.ws_server_config {
-            yyy = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+            ws_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
         }
-
         Self {
-            http_server_config: xxx,
+            http_server_config,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
-            ws_server_config: yyy,
+            ws_server_config,
             ws_cors_domains: self.ws_cors_domains,
             ws_addr: self.ws_addr,
             ipc_server_config: self.ipc_server_config,
