@@ -209,7 +209,7 @@ pub mod eth;
 pub use eth::EthHandlers;
 
 // Rpc server metrics
-mod metrics;
+pub mod metrics;
 
 /// Convenience function for starting a server in one step.
 #[allow(clippy::too_many_arguments)]
@@ -1214,12 +1214,12 @@ impl RpcServerConfig {
     }
 }
 
-impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware>
-where
-    RpcMiddleware: Clone,
-{
+impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
     /// Configure rpc middleware
-    pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
+    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<HttpMiddleware, T>
+    where
+        T: Clone,
+    {
         let mut http_server_config = None;
         if let Some(value) = self.http_server_config {
             http_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
@@ -1828,6 +1828,36 @@ impl RpcServerHandle {
         let client = builder.build(url).await.expect("failed to create ws client");
         Some(client)
     }
+}
+
+use std::sync::atomic::{Ordering, AtomicUsize};
+use futures::future::BoxFuture;
+use jsonrpsee::MethodResponse;
+use jsonrpsee::types::Request;
+
+#[derive(Clone)]
+pub struct MyMiddleware<S> {
+    pub service: S,
+    pub count: Arc<AtomicUsize>,
+}
+
+impl<'a, S> RpcServiceT<'a> for MyMiddleware<S>
+where S: RpcServiceT<'a> + Send + Sync + Clone + 'static,
+{
+   type Future = BoxFuture<'a, MethodResponse>;
+
+   fn call(&self, req: Request<'a>) -> Self::Future {
+        tracing::info!("MyMiddleware processed call {}", req.method);
+        let count = self.count.clone();
+        let service = self.service.clone();
+
+        Box::pin(async move {
+            let rp = service.call(req).await;
+            // Modify the state.
+            count.fetch_add(1, Ordering::Relaxed);
+            rp
+        })
+   }
 }
 
 #[cfg(test)]

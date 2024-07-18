@@ -40,6 +40,7 @@ reth-metrics = { workspace = true, features = ["common"] }
 metrics.workspace = true
 
 # misc
+futures.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true

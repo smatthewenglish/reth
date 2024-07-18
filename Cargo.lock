@@ -2971,10 +2971,12 @@ dependencies = [
  "eyre",
  "futures",
  "jsonrpsee",
+ "metrics",
  "reth",
  "reth-chainspec",
  "reth-db",
  "reth-db-api",
+ "reth-metrics",
  "reth-node-ethereum",
  "reth-provider",
  "tokio",
@@ -8245,6 +8247,7 @@ name = "reth-rpc-builder"
 version = "1.0.2"
 dependencies = [
  "clap",
+ "futures",
  "http 1.1.0",
  "jsonrpsee",
  "metrics",
