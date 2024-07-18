@@ -178,8 +178,10 @@ use tower::Layer;
 use tower_http::cors::CorsLayer;
 
 use crate::{
-    auth::AuthRpcModule, cors::CorsDomainError, error::WsHttpSamePortError,
-    metrics::RpcRequestMetrics,
+    auth::AuthRpcModule,
+    cors::CorsDomainError,
+    error::WsHttpSamePortError,
+    metrics::{RpcRequestMetrics, RpcRequestMetricsService},
 };
 
 // re-export for convenience
@@ -1164,7 +1166,7 @@ impl Default for RpcServerConfig<Identity, Identity> {
             ipc_endpoint: None,
             jwt_secret: None,
             rpc_middleware: RpcServiceBuilder::new(),
-            http_middleware: ServiceBuilder::new()
+            http_middleware: ServiceBuilder::new(),
         }
     }
 }
@@ -1214,14 +1216,12 @@ impl RpcServerConfig {
     }
 }
 
-
-impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware> 
-where 
-    RpcMiddleware: Clone
+impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware>
+where
+    RpcMiddleware: Clone,
 {
     /// Configure rpc middleware
-    pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
-
+    pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> Self {
         let mut xxx = None;
         if let Some(value) = self.http_server_config {
             xxx = Some(value.set_rpc_middleware(rpc_middleware.clone()));
@@ -1231,7 +1231,7 @@ where
             yyy = Some(value.set_rpc_middleware(rpc_middleware.clone()));
         }
 
-        RpcServerConfig {
+        Self {
             http_server_config: xxx,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
@@ -1356,8 +1356,9 @@ where
     /// Returns the [`RpcServerHandle`] with the handle to the started servers.
     pub async fn start(self, modules: &TransportRpcModules) -> Result<RpcServerHandle, RpcError>
     where
-        RpcMiddleware: for<'a> Layer<RpcService, Service: RpcServiceT<'a>> + Clone + Send + 'static,
-        <RpcMiddleware as Layer<RpcService>>::Service: Send + std::marker::Sync,
+        RpcMiddleware: Layer<RpcRequestMetricsService<RpcService>> + Send + 'static,
+        for<'a> <RpcMiddleware as Layer<RpcRequestMetricsService<RpcService>>>::Service:
+            Send + Sync + 'static + RpcServiceT<'a>,
     {
         let mut http_handle = None;
         let mut ws_handle = None;
@@ -1415,7 +1416,7 @@ where
                             .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                     )
                     .set_rpc_middleware(
-                        RpcServiceBuilder::new().layer(
+                        self.rpc_middleware.clone().layer(
                             modules
                                 .http
                                 .as_ref()
@@ -1463,7 +1464,8 @@ where
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new()
+                    self.rpc_middleware
+                        .clone()
                         .layer(modules.ws.as_ref().map(RpcRequestMetrics::ws).unwrap_or_default()),
                 )
                 .build(ws_socket_addr)
@@ -1487,7 +1489,7 @@ where
                         .option_layer(Self::maybe_jwt_layer(self.jwt_secret)),
                 )
                 .set_rpc_middleware(
-                    RpcServiceBuilder::new().layer(
+                    self.rpc_middleware.clone().layer(
                         modules.http.as_ref().map(RpcRequestMetrics::http).unwrap_or_default(),
                     ),
                 )
