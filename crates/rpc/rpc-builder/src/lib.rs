@@ -174,7 +174,8 @@ use reth_rpc_layer::{AuthLayer, Claims, JwtAuthValidator, JwtSecret};
 use reth_tasks::{pool::BlockingTaskGuard, TaskSpawner, TokioTaskExecutor};
 use reth_transaction_pool::{noop::NoopTransactionPool, TransactionPool};
 use serde::{Deserialize, Serialize};
-use tower::Layer;
+use tower::{Layer, ServiceBuilder};
+
 use tower_http::cors::CorsLayer;
 
 use crate::{
@@ -1123,15 +1124,15 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Debug)]
-pub struct RpcServerConfig<RpcMiddleware = Identity> {
+pub struct RpcServerConfig<HttpMiddleware = Identity, RpcMiddleware = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
@@ -1144,11 +1145,13 @@ pub struct RpcServerConfig<RpcMiddleware = Identity> {
     jwt_secret: Option<JwtSecret>,
     /// Configurable RPC middleware
     rpc_middleware: RpcServiceBuilder<RpcMiddleware>,
+    /// Configurable HTTP middleware
+    http_middleware: ServiceBuilder<HttpMiddleware>,
 }
 
 // === impl RpcServerConfig ===
 
-impl Default for RpcServerConfig<Identity> {
+impl Default for RpcServerConfig<Identity, Identity> {
     /// Create a new config instance
     fn default() -> Self {
         Self {
@@ -1162,6 +1165,7 @@ impl Default for RpcServerConfig<Identity> {
             ipc_endpoint: None,
             jwt_secret: None,
             rpc_middleware: RpcServiceBuilder::new(),
+            http_middleware: ServiceBuilder::new(),
         }
     }
 }
@@ -1211,22 +1215,65 @@ impl RpcServerConfig {
     }
 }
 
-impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
-    /// Configure rpc middleware
-    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
-        RpcServerConfig {
-            http_server_config: self.http_server_config,
+impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
+    /// Configure RPC middleware
+    pub fn set_rpc_middleware<T>(
+        self,
+        rpc_middleware: RpcServiceBuilder<T>,
+    ) -> RpcServerConfig<HttpMiddleware, T>
+    where
+        T: Clone,
+    {
+        let mut http_server_config = None;
+        if let Some(value) = self.http_server_config {
+            http_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+        let mut ws_server_config = None;
+        if let Some(value) = self.ws_server_config {
+            ws_server_config = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+        RpcServerConfig::<HttpMiddleware, T> {
+            http_server_config,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
-            ws_server_config: self.ws_server_config,
+            ws_server_config,
             ws_cors_domains: self.ws_cors_domains,
             ws_addr: self.ws_addr,
             ipc_server_config: self.ipc_server_config,
             ipc_endpoint: self.ipc_endpoint,
             jwt_secret: self.jwt_secret,
             rpc_middleware,
+            http_middleware: self.http_middleware,
         }
     }
+
+    /// Configure HTTP middleware
+	pub fn set_http_middleware<T>(self, http_middleware: ServiceBuilder<T>) -> RpcServerConfig<T, RpcMiddleware> 
+    where
+        T: Clone,
+    {
+        let mut http_server_config = None;
+        if let Some(value) = self.http_server_config {
+            http_server_config = Some(value.set_http_middleware(http_middleware.clone()));
+        }
+        let mut ws_server_config = None;
+        if let Some(value) = self.ws_server_config {
+            ws_server_config = Some(value.set_http_middleware(http_middleware.clone()));
+        }
+        RpcServerConfig::<T, RpcMiddleware> {
+            http_server_config,
+            http_cors_domains: self.http_cors_domains,
+            http_addr: self.http_addr,
+            ws_server_config,
+            ws_cors_domains: self.ws_cors_domains,
+            ws_addr: self.ws_addr,
+            ipc_server_config: self.ipc_server_config,
+            ipc_endpoint: self.ipc_endpoint,
+            jwt_secret: self.jwt_secret,
+            rpc_middleware: self.rpc_middleware,
+            http_middleware,
+        }
+	}
 
     /// Configure the cors domains for http _and_ ws
     pub fn with_cors(self, cors_domain: Option<String>) -> Self {
