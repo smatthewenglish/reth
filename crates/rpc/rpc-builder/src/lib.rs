@@ -209,7 +209,7 @@ pub mod eth;
 pub use eth::EthHandlers;
 
 // Rpc server metrics
-mod metrics;
+pub mod metrics;
 
 /// Convenience function for starting a server in one step.
 #[allow(clippy::too_many_arguments)]

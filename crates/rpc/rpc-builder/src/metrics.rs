@@ -21,7 +21,7 @@ use tower::Layer;
 /// - Request metrics: metrics for each RPC method (e.g. number of calls started, time taken to
 ///   process a call)
 #[derive(Default, Debug, Clone)]
-pub(crate) struct RpcRequestMetrics {
+pub struct RpcRequestMetrics {
     inner: Arc<RpcServerMetricsInner>,
 }
 
@@ -88,7 +88,7 @@ pub struct RpcRequestMetricsService<S> {
 }
 
 impl<S> RpcRequestMetricsService<S> {
-    pub(crate) fn new(service: S, metrics: RpcRequestMetrics) -> Self {
+    pub fn new(service: S, metrics: RpcRequestMetrics) -> Self {
         // this instance is kept alive for the duration of the connection
         metrics.inner.connection_metrics.connections_opened_total.increment(1);
         Self { inner: service, metrics }
