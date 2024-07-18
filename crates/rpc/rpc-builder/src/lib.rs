@@ -1121,15 +1121,15 @@ where
 /// Once the [`RpcModule`] is built via [`RpcModuleBuilder`] the servers can be started, See also
 /// [`ServerBuilder::build`] and [`Server::start`](jsonrpsee::server::Server::start).
 #[derive(Debug)]
-pub struct RpcServerConfig<RpcMiddleware = Identity> {
+pub struct RpcServerConfig<HttpMiddleware = Identity, RpcMiddleware = Identity> {
     /// Configs for JSON-RPC Http.
-    http_server_config: Option<ServerBuilder<Identity, Identity>>,
+    http_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for http
     http_cors_domains: Option<String>,
     /// Address where to bind the http server to
     http_addr: Option<SocketAddr>,
     /// Configs for WS server
-    ws_server_config: Option<ServerBuilder<Identity, Identity>>,
+    ws_server_config: Option<ServerBuilder<HttpMiddleware, RpcMiddleware>>,
     /// Allowed CORS Domains for ws.
     ws_cors_domains: Option<String>,
     /// Address where to bind the ws server to
@@ -1141,13 +1141,16 @@ pub struct RpcServerConfig<RpcMiddleware = Identity> {
     /// JWT secret for authentication
     jwt_secret: Option<JwtSecret>,
     /// Configurable RPC middleware
-    #[allow(dead_code)]
     rpc_middleware: RpcServiceBuilder<RpcMiddleware>,
+    /// Configurable HTTP middleware
+    http_middleware: ServiceBuilder<HttpMiddleware>,
 }
+
+use tower::ServiceBuilder;
 
 // === impl RpcServerConfig ===
 
-impl Default for RpcServerConfig<Identity> {
+impl Default for RpcServerConfig<Identity, Identity> {
     /// Create a new config instance
     fn default() -> Self {
         Self {
@@ -1161,6 +1164,7 @@ impl Default for RpcServerConfig<Identity> {
             ipc_endpoint: None,
             jwt_secret: None,
             rpc_middleware: RpcServiceBuilder::new(),
+            http_middleware: ServiceBuilder::new()
         }
     }
 }
@@ -1210,20 +1214,35 @@ impl RpcServerConfig {
     }
 }
 
-impl<RpcMiddleware> RpcServerConfig<RpcMiddleware> {
+
+impl<HttpMiddleware, RpcMiddleware> RpcServerConfig<HttpMiddleware, RpcMiddleware> 
+where 
+    RpcMiddleware: Clone
+{
     /// Configure rpc middleware
-    pub fn set_rpc_middleware<T>(self, rpc_middleware: RpcServiceBuilder<T>) -> RpcServerConfig<T> {
+    pub fn set_rpc_middleware(self, rpc_middleware: RpcServiceBuilder<RpcMiddleware>) -> RpcServerConfig<HttpMiddleware, RpcMiddleware> {
+
+        let mut xxx = None;
+        if let Some(value) = self.http_server_config {
+            xxx = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+        let mut yyy = None;
+        if let Some(value) = self.ws_server_config {
+            yyy = Some(value.set_rpc_middleware(rpc_middleware.clone()));
+        }
+
         RpcServerConfig {
-            http_server_config: self.http_server_config,
+            http_server_config: xxx,
             http_cors_domains: self.http_cors_domains,
             http_addr: self.http_addr,
-            ws_server_config: self.ws_server_config,
+            ws_server_config: yyy,
             ws_cors_domains: self.ws_cors_domains,
             ws_addr: self.ws_addr,
             ipc_server_config: self.ipc_server_config,
             ipc_endpoint: self.ipc_endpoint,
             jwt_secret: self.jwt_secret,
             rpc_middleware,
+            http_middleware: self.http_middleware,
         }
     }
 
