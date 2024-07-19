@@ -64,10 +64,13 @@ async fn test_rpc_middleware() {
         Box::new(EthApi::with_spawner),
     );
 
+    use tower::limit::concurrency::ConcurrencyLimit;
+
     let mylayer = MyMiddlewareLayer::default();
 
     let handle = RpcServerConfig::http(Default::default())
         .with_http_address(test_address())
+        .concurrency_limit(2)
         .set_rpc_middleware(RpcServiceBuilder::new().layer(mylayer.clone()))
         .start(&modules)
         .await
