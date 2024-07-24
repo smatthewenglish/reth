@@ -57,6 +57,32 @@ where
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_my_middleware() {
+
+    use jsonrpsee::types::params::{Id, TwoPointZero};
+    let two_point_zero: TwoPointZero = TwoPointZero::default();
+    let id: Id<'_> = Id::Number(13);
+    
+    use beef::Cow;
+    let method: Cow<'_, str> = Cow::owned("owned_string".to_string());
+
+    use http::Extensions;
+    let extensions: Extensions = Extensions::new();
+    
+    let request: Request<'_> = Request::new(
+        method,
+        None,
+        id,
+    );
+
+    let my_layer = MyMiddlewareLayer::default();
+
+    //my_layer.call(request);
+
+    //assert_eq!(count, 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_rpc_middleware() {
     let builder = test_rpc_builder();
     let modules = builder.build(
@@ -78,3 +104,5 @@ async fn test_rpc_middleware() {
     let count = mylayer.count.load(Ordering::Relaxed);
     assert_eq!(count, 1);
 }
+
+

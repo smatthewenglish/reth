@@ -43,6 +43,7 @@ metrics.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
+beef = "0.5.2"
 
 [dev-dependencies]
 reth-chainspec.workspace = true

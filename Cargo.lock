@@ -8287,6 +8287,7 @@ dependencies = [
 name = "reth-rpc-builder"
 version = "1.0.3"
 dependencies = [
+ "beef",
  "clap",
  "http 1.1.0",
  "jsonrpsee",
