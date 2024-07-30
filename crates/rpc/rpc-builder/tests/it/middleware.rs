@@ -24,14 +24,43 @@ struct MyMiddlewareLayer {
 }
 
 impl<S> Layer<S> for MyMiddlewareLayer {
-    type Service = MyMiddlewareService<S>;
+    //type Service = MyMiddlewareService<S>;
+    type Service = BasicService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        MyMiddlewareService { service: inner, count: self.count.clone() }
+        //MyMiddlewareService { service: inner, count: self.count.clone() }
+        BasicService { service: inner, count: self.count.clone() }
     }
 }
 
-#[derive(Clone)]
+
+struct BasicService<S> {
+    service: S,
+    count: Arc<AtomicUsize>,
+}
+
+impl<'a, S> RpcServiceT<'a> for BasicService<S> {
+    type Future = Pin<Box<dyn Future<Output = MethodResponse> + Send + 'a>>;
+
+    fn call(&self, req: Request<'a>) -> Self::Future {
+
+        use jsonrpsee::types::params::Id;
+        use jsonrpsee::ResponsePayload;
+
+        Box::pin(async move {
+            // Simulate some processing
+            let id = Id::Number(1); // Example ID
+            let result = ResponsePayload::success("Some result");
+            let max_response_size = 1024; // Example size limit
+            MethodResponse::response(id, result, max_response_size)
+        })
+    }
+}
+
+
+
+
+#[derive(Clone, Default)]
 struct MyMiddlewareService<S> {
     service: S,
     count: Arc<AtomicUsize>,
@@ -56,6 +85,8 @@ where
     }
 }
 
+
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_my_middleware() {
 
@@ -76,11 +107,12 @@ async fn test_my_middleware() {
     );
 
     let my_layer = MyMiddlewareLayer::default();
+    my_layer.call(request).await;
 
-    //my_layer.call(request);
 
-    //assert_eq!(count, 1);
 }
+
+
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_rpc_middleware() {
@@ -104,5 +136,6 @@ async fn test_rpc_middleware() {
     let count = mylayer.count.load(Ordering::Relaxed);
     assert_eq!(count, 1);
 }
+
 
 
